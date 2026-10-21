@@ -11,6 +11,7 @@ ADMIN_ID = 8481771373
 
 user_states = {}
 user_lang = {}
+admin_temp_data = {}  # Yangi mahsulot qo'shish uchun vaqtincha xotira
 
 # Mahsulotlar ombori
 PRODUCTS = {
@@ -174,7 +175,7 @@ def report_out_of_stock(call):
 def change_language_menu(message):
     send_welcome(message)
 
-# 3. ALOHIDA BO'LIM: TAKLIFLAR
+# 3. TAKLIFLAR
 @bot.message_handler(func=lambda message: message.text in ["💡 Taklifim bor", "💡 Есть предложение"])
 def handle_suggestion_button(message):
     lang = user_lang.get(message.chat.id, 'uz')
@@ -186,7 +187,6 @@ def process_suggestion(message):
     lang = user_lang.get(message.chat.id, 'uz')
     user = message.from_user
     
-    # Adminga taklifni yuborish
     markup = types.InlineKeyboardMarkup()
     markup.add(types.InlineKeyboardButton("💬 Javob berish", callback_data=f"reply_{message.chat.id}"))
     
@@ -200,7 +200,7 @@ def process_suggestion(message):
     thanks_msg = "Rahmat, taklifingiz uchun! Albatta e'tibor beramiz." if lang == 'uz' else "Спасибо за ваше предложение! Мы обязательно обратим внимание."
     bot.send_message(message.chat.id, thanks_msg, reply_markup=get_main_keyboard(lang))
 
-# 4. ALOHIDA BO'LIM: SHIKOYATLAR
+# 4. SHIKOYATLAR
 @bot.message_handler(func=lambda message: message.text in ["⚠️ Shikoyatim bor", "⚠️ Есть жалоба"])
 def handle_complaint_button(message):
     lang = user_lang.get(message.chat.id, 'uz')
@@ -212,7 +212,6 @@ def process_complaint(message):
     lang = user_lang.get(message.chat.id, 'uz')
     user = message.from_user
     
-    # Adminga shikoyatni yuborish
     markup = types.InlineKeyboardMarkup()
     markup.add(types.InlineKeyboardButton("💬 Javob berish", callback_data=f"reply_{message.chat.id}"))
     
@@ -226,17 +225,29 @@ def process_complaint(message):
     thanks_msg = "Rahmat, e'tirozingiz uchun! Kamchilikni tezda bartaraf etamiz." if lang == 'uz' else "Спасибо за обращение! Мы быстро устраним проблему."
     bot.send_message(message.chat.id, thanks_msg, reply_markup=get_main_keyboard(lang))
 
-# 5. ADMIN PANEL (/admin va /setprice)
+# 5. MUKAMMAL ADMIN PANEL (/admin)
 @bot.message_handler(commands=['admin', 'setprice'])
 def admin_panel(message):
     if message.chat.id != ADMIN_ID:
         return
     
     markup = types.InlineKeyboardMarkup(row_width=1)
+    markup.add(
+        types.InlineKeyboardButton("📝 Narx va sonini o'zgartirish", callback_data="admin_edit_existing"),
+        types.InlineKeyboardButton("➕ Yangi mahsulot qo'shish", callback_data="admin_add_new")
+    )
+    bot.send_message(ADMIN_ID, "🛠 **ADMIN PANEL**\n\nNimani amalga oshirmoqchisiz?", reply_markup=markup)
+
+# 5.1. Mavjud mahsulotlarni tahrirlash bo'limi
+@bot.callback_query_handler(func=lambda call: call.data == "admin_edit_existing")
+def admin_show_products(call):
+    if call.message.chat.id != ADMIN_ID: return
+    
+    markup = types.InlineKeyboardMarkup(row_width=1)
     for key, item in PRODUCTS.items():
         markup.add(types.InlineKeyboardButton(f"⚙️ {item['name_uz']} ({item['price']} so'm | {item['count']} ta)", callback_data=f"adm_edit_{key}"))
         
-    bot.send_message(ADMIN_ID, "🛠 **ADMIN PANEL**\n\nQaysi mahsulotni tahrirlamoqchisiz?", reply_markup=markup)
+    bot.send_message(ADMIN_ID, "Qaysi mahsulotni tahrirlamoqchisiz?", reply_markup=markup)
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('adm_edit_'))
 def admin_choose_option(call):
@@ -275,6 +286,64 @@ def update_count(message, prod_key):
         return
     PRODUCTS[prod_key]['count'] = int(message.text)
     bot.send_message(ADMIN_ID, f"✅ `{PRODUCTS[prod_key]['name_uz']}` soni **{int(message.text)} ta** deb yangilandi!")
+
+# 5.2. Yangi mahsulot qo'shish bo'limi
+@bot.callback_query_handler(func=lambda call: call.data == "admin_add_new")
+def admin_add_new_start(call):
+    if call.message.chat.id != ADMIN_ID: return
+    
+    markup = types.InlineKeyboardMarkup(row_width=2)
+    markup.add(
+        types.InlineKeyboardButton("🍫 Sneklar", callback_data="addcat_snack"),
+        types.InlineKeyboardButton("🥤 Ichimliklar", callback_data="addcat_water")
+    )
+    bot.send_message(ADMIN_ID, "➕ Yangi mahsulot qaysi toifaga kiradi?", reply_markup=markup)
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith('addcat_'))
+def admin_add_get_category(call):
+    if call.message.chat.id != ADMIN_ID: return
+    cat = call.data.split('_')[1]
+    admin_temp_data[ADMIN_ID] = {"category": cat}
+    
+    msg = bot.send_message(ADMIN_ID, "✍️ Yangi mahsulot **nomini** kiriting (masalan: Mars shokoladi):")
+    bot.register_next_step_handler(msg, admin_add_get_name)
+
+def admin_add_get_name(message):
+    admin_temp_data[ADMIN_ID]["name"] = message.text
+    msg = bot.send_message(ADMIN_ID, f"✍️ `{message.text}` uchun **narxni** faqat raqamda kiriting (masalan: 11000):")
+    bot.register_next_step_handler(msg, admin_add_get_price)
+
+def admin_add_get_price(message):
+    if not message.text.isdigit():
+        bot.send_message(ADMIN_ID, "❌ Noto'g'ri narx! Qaytadan `/admin` deb yozib urinib ko'ring.")
+        return
+    admin_temp_data[ADMIN_ID]["price"] = int(message.text)
+    msg = bot.send_message(ADMIN_ID, f"✍️ Apparatga bu mahsulotdan **nechta (dona)** qo'yildingiz? (masalan: 10):")
+    bot.register_next_step_handler(msg, admin_add_finish)
+
+def admin_add_finish(message):
+    if not message.text.isdigit():
+        bot.send_message(ADMIN_ID, "❌ Noto'g'ri son! Qaytadan `/admin` deb yozib urinib ko'ring.")
+        return
+    
+    count = int(message.text)
+    data = admin_temp_data[ADMIN_ID]
+    
+    # Kalit hosil qilish (id)
+    new_key = f"prod_{len(PRODUCTS) + 1}"
+    
+    PRODUCTS[new_key] = {
+        "name_uz": data["name"],
+        "name_ru": data["name"],
+        "price": data["price"],
+        "count": count,
+        "category": data["category"]
+    }
+    
+    bot.send_message(
+        ADMIN_ID, 
+        f"🎉 **Yangi mahsulot qo'shildi!**\n\n📌 Nomi: {data['name']}\n💰 Narxi: {data['price']:,} so'm\n📊 Soni: {count} ta"
+    )
 
 # Admin javob berishi
 @bot.callback_query_handler(func=lambda call: call.data.startswith('reply_'))
