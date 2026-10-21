@@ -14,7 +14,7 @@ user_states = {}
 user_lang = {}
 admin_temp_data = {}
 
-# Sub-kategoriyalar lug'ati
+# Словарь подкатегорий
 SUB_CATEGORIES = {
     "snack": "🍫 Sneklar va shirinliklar",
     "energy": "⚡ Energetik ichimliklar",
@@ -22,13 +22,12 @@ SUB_CATEGORIES = {
     "still": "💧 Gazlanmagan ichimliklar"
 }
 
-# Mahsulotlar ombori (Kategoriyalar bilan)
+# База товаров (Nestle 0.5L удалена навсегда)
 PRODUCTS = {
     "redbull": {"name_uz": "Red Bull 0.25L", "name_ru": "Red Bull 0.25Л", "price": 18000, "count": 10, "category": "energy"},
     "flash": {"name_uz": "Flash Up 0.45L", "name_ru": "Flash Up 0.45Л", "price": 8000, "count": 15, "category": "energy"},
     "pepsi": {"name_uz": "Pepsi 0.5L", "name_ru": "Пепси 0.5Л", "price": 9000, "count": 15, "category": "carbonated"},
     "coca_cola": {"name_uz": "Coca-Cola 0.5L", "name_ru": "Coca-Cola 0.5Л", "price": 9000, "count": 12, "category": "carbonated"},
-    "nestle_water": {"name_uz": "Nestle Suv 0.5L", "name_ru": "Вода Nestle 0.5Л", "price": 4000, "count": 25, "category": "still"},
     "snickers": {"name_uz": "Snickers", "name_ru": "Snickers", "price": 10000, "count": 8, "category": "snack"},
     "lays": {"name_uz": "Lays chipslari", "name_ru": "Чипсы Lays", "price": 9000, "count": 5, "category": "snack"}
 }
@@ -55,7 +54,7 @@ def get_main_keyboard(lang):
     keyboard.add(btn_products, btn_lang, btn_suggest, btn_complaint)
     return keyboard
 
-# 1. /start
+# 1. /start - Приветствие и выбор языка
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
     markup = types.InlineKeyboardMarkup()
@@ -81,7 +80,7 @@ def handle_language_choice(call):
     text = "O'zbek tili tanlandi! 🇺🇿\nQuyidagi menyudan foydalanishingiz mumkin:" if lang == 'uz' else "Выбран русский язык! 🇷🇺\nВы можете использовать меню ниже:"
     bot.send_message(call.message.chat.id, text, reply_markup=get_main_keyboard(lang))
 
-# 2. MIJOZ MENYUSI - ASOSIY KATEGORIYALAR
+# 2. МЕНЮ КЛИЕНТА - Категории
 @bot.message_handler(func=lambda message: message.text in ["☕ Mahsulotlar va Narxlar", "☕ Товары и Цены"])
 def show_categories(message):
     lang = user_lang.get(message.chat.id, 'uz')
@@ -104,7 +103,7 @@ def show_categories(message):
         
     bot.send_message(message.chat.id, text, reply_markup=markup)
 
-# ICHIMLIKLAR OSTKI BO'LIMLARI (3 xil)
+# Подкатегории напитков (3 типа)
 @bot.callback_query_handler(func=lambda call: call.data == "maincat_drinks")
 def show_drink_subcategories(call):
     lang = user_lang.get(call.message.chat.id, 'uz')
@@ -129,7 +128,7 @@ def show_drink_subcategories(call):
         
     bot.edit_message_text(text, call.message.chat.id, call.message.message_id, reply_markup=markup)
 
-# MAHSULOTLAR RO'YXATI (Kategoriya bo'yicha filter)
+# Список товаров по выбранной категории
 @bot.callback_query_handler(func=lambda call: call.data.startswith('cat_'))
 def show_products_in_category(call):
     cat = call.data.split('_')[1]
@@ -156,7 +155,7 @@ def show_products_in_category(call):
     text = "Выберите товар:" if lang == 'ru' else "Mahsulotni tanlang:"
     bot.edit_message_text(text, call.message.chat.id, call.message.message_id, reply_markup=markup)
 
-# MAHSULOT INFO (Narx, soni, tugagani xabari va Ortga)
+# Страница товара (Цена, количество, сообщить о нехватке, кнопка Назад)
 @bot.callback_query_handler(func=lambda call: call.data.startswith('prod_'))
 def show_product_details(call):
     prod_key = call.data.split('_')[1]
@@ -210,7 +209,7 @@ def report_out_of_stock(call):
 def change_language_menu(message):
     send_welcome(message)
 
-# TAKLIF VA SHIKOYATLAR
+# 3. ПРЕДЛОЖЕНИЯ И ЖАЛОБЫ
 @bot.message_handler(func=lambda message: message.text in ["💡 Taklifim bor", "💡 Есть предложение"])
 def handle_suggestion_button(message):
     lang = user_lang.get(message.chat.id, 'uz')
@@ -251,7 +250,7 @@ def process_complaint(message):
         
     bot.send_message(message.chat.id, "Rahmat, e'tirozingiz uchun!" if lang == 'uz' else "Спасибо за обращение!", reply_markup=get_main_keyboard(lang))
 
-# 3. ADMIN PANEL (/admin) - KATEGORIYALAR BILAN TARTIBLANGAN
+# 4. АДМИН-ПАНЕЛЬ (/admin)
 @bot.message_handler(commands=['admin', 'setprice'])
 def admin_panel(message):
     if message.chat.id != ADMIN_ID: return
@@ -263,7 +262,6 @@ def admin_panel(message):
     )
     bot.send_message(ADMIN_ID, "🛠 **ADMIN PANEL**\n\nKerakli bo'limni tanlang:", reply_markup=markup)
 
-# ADMIN - TAHRIRLASH UCHUN KATEGORIYA TANLASH
 @bot.callback_query_handler(func=lambda call: call.data == "admin_select_cat")
 def admin_select_category_to_edit(call):
     if call.message.chat.id != ADMIN_ID: return
@@ -312,7 +310,7 @@ def admin_choose_option(call):
     )
     bot.send_message(ADMIN_ID, f"📌 **{PRODUCTS[prod_key]['name_uz']}** bo'yicha amalni tanlang:", reply_markup=markup)
 
-# BUTUNLAY O'CHIRISH
+# Полное удаление товара
 @bot.callback_query_handler(func=lambda call: call.data.startswith('deletep_'))
 def admin_delete_product(call):
     if call.message.chat.id != ADMIN_ID: return
@@ -351,7 +349,7 @@ def update_count(message, prod_key):
     PRODUCTS[prod_key]['count'] = int(message.text)
     bot.send_message(ADMIN_ID, f"✅ `{PRODUCTS[prod_key]['name_uz']}` soni **{int(message.text)} ta** deb yangilandi!")
 
-# ADMIN - YANGI MAHSULOT QO'SHISH (4 ta kategoriya)
+# Добавление нового товара
 @bot.callback_query_handler(func=lambda call: call.data == "admin_add_new")
 def admin_add_new_start(call):
     if call.message.chat.id != ADMIN_ID: return
@@ -422,7 +420,7 @@ def send_reply_to_user(message, target_user_id):
     except Exception as e:
         bot.send_message(ADMIN_ID, f"❌ Xatolik: {e}")
 
-# AVTO-RECONNECT 24/7
+# Защита от зависаний 24/7
 def run_bot():
     while True:
         try:
