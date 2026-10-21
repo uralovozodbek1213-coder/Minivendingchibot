@@ -54,10 +54,9 @@ def home():
     return "Bot is running 24/7!"
 
 def set_bot_commands():
+    # Oddiy foydalanuvchilar menyusida faqat /start ko'rinadi
     commands = [
-        types.BotCommand("start", "Botni qayta ishga tushirish / Restart bot 🔄"),
-        types.BotCommand("admin", "Admin panel 🛠"),
-        types.BotCommand("a", "Admin panel (qisqa) 🛠")
+        types.BotCommand("start", "Botni qayta ishga tushirish / Restart bot 🔄")
     ]
     bot.set_my_commands(commands)
 
@@ -406,10 +405,11 @@ def process_complaint(message):
         
     bot.send_message(message.chat.id, thanks, parse_mode="Markdown", reply_markup=get_main_keyboard(lang))
 
-# 3. ADMIN PANEL (/admin, /setprice, hamda /a qisqartmasi)
-@bot.message_handler(commands=['admin', 'setprice', 'a'])
+# 3. ADMIN PANEL (Faqat ADMIN_ID uchun ishlaydi, /a olib tashlandi)
+@bot.message_handler(commands=['admin', 'setprice'])
 def admin_panel(message):
-    if message.chat.id != ADMIN_ID: return
+    if message.chat.id != ADMIN_ID:
+        return
     render_admin_main(message)
 
 def render_admin_main(call_or_msg):
