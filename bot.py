@@ -1,4 +1,5 @@
 import os
+import time
 import threading
 from flask import Flask
 import telebot
@@ -13,11 +14,57 @@ user_states = {}
 user_lang = {}
 admin_temp_data = {}  # Yangi mahsulot qo'shish uchun vaqtincha xotira
 
-# Mahsulotlar ombori
+# Mahsulotlar ombori (Har bir mahsulot alohida lug'atda)
 PRODUCTS = {
-    "snickers": {"name_uz": "Snickers / KitKat", "name_ru": "Snickers / KitKat", "price": 10000, "count": 8, "category": "snack"},
-    "lays": {"name_uz": "Lays chipslari", "name_ru": "Чипсы Lays", "price": 9000, "count": 5, "category": "snack"},
-    "water": {"name_uz": "Gazlangan suvlar", "name_ru": "Газированные напитки", "price": 5000, "count": 30, "category": "water"}
+    "pepsi": {
+        "name_uz": "Pepsi 0.5L", 
+        "name_ru": "Пепси 0.5Л", 
+        "price": 9000, 
+        "count": 15, 
+        "category": "water"
+    },
+    "coca_cola": {
+        "name_uz": "Coca-Cola 0.5L", 
+        "name_ru": "Coca-Cola 0.5Л", 
+        "price": 9000, 
+        "count": 12, 
+        "category": "water"
+    },
+    "fanta": {
+        "name_uz": "Fanta 0.5L", 
+        "name_ru": "Фанта 0.5Л", 
+        "price": 9000, 
+        "count": 10, 
+        "category": "water"
+    },
+    "nestle_water": {
+        "name_uz": "Nestle Gazsiz Suv 0.5L", 
+        "name_ru": "Вода Nestle 0.5Л", 
+        "price": 4000, 
+        "count": 25, 
+        "category": "water"
+    },
+    "snickers": {
+        "name_uz": "Snickers", 
+        "name_ru": "Snickers", 
+        "price": 10000, 
+        "count": 8, 
+        "category": "snack"
+    },
+    "kitkat": {
+        "name_uz": "KitKat", 
+        "name_ru": "KitKat", 
+        "price": 10000, 
+        "count": 10, 
+        "category": "snack"
+    },
+    "lays": {
+        "name_uz": "Lays chipslari", 
+        "name_ru": "Чипсы Lays", 
+        "price": 9000, 
+        "count": 5, 
+        "category": "snack"
+    }
 }
 
 app = Flask(__name__)
@@ -70,7 +117,7 @@ def handle_language_choice(call):
     text = "O'zbek tili tanlandi! 🇺🇿\nQuyidagi menyudan foydalanishingiz mumkin:" if lang == 'uz' else "Выбран русский язык! 🇷🇺\nВы можете использовать меню ниже:"
     bot.send_message(call.message.chat.id, text, reply_markup=get_main_keyboard(lang))
 
-# 2. Mahsulotlar kategoriyasi
+# 2. KATEGORIYALAR BO'LIMI
 @bot.message_handler(func=lambda message: message.text in ["☕ Mahsulotlar va Narxlar", "☕ Товары и Цены"])
 def show_categories(message):
     lang = user_lang.get(message.chat.id, 'uz')
@@ -93,37 +140,53 @@ def show_categories(message):
         
     bot.send_message(message.chat.id, text, reply_markup=markup)
 
+# 2.1. Kategoriya ichidagi barcha mahsulotlarni alohida tugmalarda chiqarish
 @bot.callback_query_handler(func=lambda call: call.data.startswith('cat_'))
 def show_products_in_category(call):
     cat = call.data.split('_')[1]
     lang = user_lang.get(call.message.chat.id, 'uz')
     
     markup = types.InlineKeyboardMarkup(row_width=1)
+    
+    # Ushbu kategoriyadagi har bir mahsulotni alohida tugma qilib qo'shish
     for key, item in PRODUCTS.items():
         if item["category"] == cat:
             name = item["name_ru"] if lang == 'ru' else item["name_uz"]
-            markup.add(types.InlineKeyboardButton(f"{name}", callback_data=f"prod_{key}"))
+            markup.add(types.InlineKeyboardButton(f"🔹 {name}", callback_data=f"prod_{key}"))
             
     btn_back = types.InlineKeyboardButton("🔙 Ortga" if lang == 'uz' else "🔙 Назад", callback_data="back_to_cats")
     markup.add(btn_back)
             
-    text = "Выберите товар:" if lang == 'ru' else "Mahsulotni tanlang:"
+    text = "Выберите товар из списка:" if lang == 'ru' else "Ro'yxatdan kerakli mahsulotni tanlang:"
     bot.edit_message_text(text, call.message.chat.id, call.message.message_id, reply_markup=markup)
 
+# 2.2. Tanlangan mahsulot tafsilotlari (Narxi, soni, tugagani haqida xabar berish va Ortga)
 @bot.callback_query_handler(func=lambda call: call.data.startswith('prod_'))
 def show_product_details(call):
     prod_key = call.data.split('_')[1]
     lang = user_lang.get(call.message.chat.id, 'uz')
-    item = PRODUCTS[prod_key]
     
+    if prod_key not in PRODUCTS:
+        bot.answer_callback_query(call.id, "Mahsulot topilmadi yoki o'chirilgan!")
+        return
+
+    item = PRODUCTS[prod_key]
     name = item["name_ru"] if lang == 'ru' else item["name_uz"]
     
     if lang == 'ru':
-        text = f"📦 **Товар:** {name}\n💰 **Цена:** {item['price']:,} сум\n📊 **В наличии в аппарате:** {item['count']} шт."
+        text = (
+            f"📦 **Товар:** {name}\n"
+            f"💰 **Цена:** {item['price']:,} сум\n"
+            f"📊 **В наличии в аппарате:** {item['count']} шт."
+        )
         btn_out = types.InlineKeyboardButton("🚨 Сообщить: Товар закончился", callback_data=f"outofstock_{prod_key}")
         btn_back = types.InlineKeyboardButton("🔙 Назад к списку", callback_data=f"cat_{item['category']}")
     else:
-        text = f"📦 **Mahsulot:** {name}\n💰 **Narxi:** {item['price']:,} so'm\n📊 **Qurilmada mavjud:** {item['count']} ta"
+        text = (
+            f"📦 **Mahsulot:** {name}\n"
+            f"💰 **Narxi:** {item['price']:,} so'm\n"
+            f"📊 **Qurilmada mavjud:** {item['count']} ta"
+        )
         btn_out = types.InlineKeyboardButton("🚨 Mahsulot tugadi (Xabar berish)", callback_data=f"outofstock_{prod_key}")
         btn_back = types.InlineKeyboardButton("🔙 Ortga", callback_data=f"cat_{item['category']}")
         
@@ -132,6 +195,7 @@ def show_product_details(call):
     
     bot.edit_message_text(text, call.message.chat.id, call.message.message_id, parse_mode="Markdown", reply_markup=markup)
 
+# Navigatsiya - Kategoriyalarga qaytish
 @bot.callback_query_handler(func=lambda call: call.data == "back_to_cats")
 def back_to_categories(call):
     lang = user_lang.get(call.message.chat.id, 'uz')
@@ -154,13 +218,17 @@ def back_to_categories(call):
         
     bot.edit_message_text(text, call.message.chat.id, call.message.message_id, reply_markup=markup)
 
+# Navigatsiya - Asosiy menyuga qaytish
 @bot.callback_query_handler(func=lambda call: call.data == "back_to_main")
 def back_to_main_menu(call):
     bot.delete_message(call.message.chat.id, call.message.message_id)
 
+# Mahsulot tugagani haqida adminga bildirishnoma yuborish
 @bot.callback_query_handler(func=lambda call: call.data.startswith('outofstock_'))
 def report_out_of_stock(call):
     prod_key = call.data.split('_')[1]
+    if prod_key not in PRODUCTS: return
+    
     item = PRODUCTS[prod_key]
     user = call.from_user
     lang = user_lang.get(call.message.chat.id, 'uz')
@@ -168,14 +236,14 @@ def report_out_of_stock(call):
     confirm_text = "Rahmat! Adminlarga mahsulot tugagani haqida xabar berildi." if lang == 'uz' else "Спасибо! Администратору отправлено уведомление."
     bot.answer_callback_query(call.id, confirm_text, show_alert=True)
     
-    admin_alert = f"⚠️ **DIQQAT! MAHSULOT TUGADI!**\n\nFoydalanuvchi @{user.username} ({user.first_name}) quyidagi mahsulot tugaganini ma'lum qildi:\n📌 **{item['name_uz']}**"
+    admin_alert = f"⚠️ **DIQQAT! MAHSULOT TUGADI!**\n\nFoydalanuvchi @{user.username or 'yoq'} ({user.first_name}) quyidagi mahsulot tugaganini ma'lum qildi:\n📌 **{item['name_uz']}**"
     bot.send_message(ADMIN_ID, admin_alert, parse_mode="Markdown")
 
 @bot.message_handler(func=lambda message: message.text in ["🌐 Tilni tanlash", "🌐 Сменить язык"])
 def change_language_menu(message):
     send_welcome(message)
 
-# 3. TAKLIFLAR
+# 3. TAKLIFLAR BO'LIMI
 @bot.message_handler(func=lambda message: message.text in ["💡 Taklifim bor", "💡 Есть предложение"])
 def handle_suggestion_button(message):
     lang = user_lang.get(message.chat.id, 'uz')
@@ -200,7 +268,7 @@ def process_suggestion(message):
     thanks_msg = "Rahmat, taklifingiz uchun! Albatta e'tibor beramiz." if lang == 'uz' else "Спасибо за ваше предложение! Мы обязательно обратим внимание."
     bot.send_message(message.chat.id, thanks_msg, reply_markup=get_main_keyboard(lang))
 
-# 4. SHIKOYATLAR
+# 4. SHIKOYATLAR BO'LIMI
 @bot.message_handler(func=lambda message: message.text in ["⚠️ Shikoyatim bor", "⚠️ Есть жалоба"])
 def handle_complaint_button(message):
     lang = user_lang.get(message.chat.id, 'uz')
@@ -233,33 +301,55 @@ def admin_panel(message):
     
     markup = types.InlineKeyboardMarkup(row_width=1)
     markup.add(
-        types.InlineKeyboardButton("📝 Narx va sonini o'zgartirish", callback_data="admin_edit_existing"),
+        types.InlineKeyboardButton("📝 Narx, sonini o'zgartirish va O'CHIRISH", callback_data="admin_edit_existing"),
         types.InlineKeyboardButton("➕ Yangi mahsulot qo'shish", callback_data="admin_add_new")
     )
     bot.send_message(ADMIN_ID, "🛠 **ADMIN PANEL**\n\nNimani amalga oshirmoqchisiz?", reply_markup=markup)
 
-# 5.1. Mavjud mahsulotlarni tahrirlash bo'limi
+# 5.1. Mavjud mahsulotlarni tahrirlash va o'chirish
 @bot.callback_query_handler(func=lambda call: call.data == "admin_edit_existing")
 def admin_show_products(call):
     if call.message.chat.id != ADMIN_ID: return
     
+    if not PRODUCTS:
+        bot.send_message(ADMIN_ID, "Hozircha hech qanday mahsulot mavjud emas.")
+        return
+        
     markup = types.InlineKeyboardMarkup(row_width=1)
     for key, item in PRODUCTS.items():
         markup.add(types.InlineKeyboardButton(f"⚙️ {item['name_uz']} ({item['price']} so'm | {item['count']} ta)", callback_data=f"adm_edit_{key}"))
         
-    bot.send_message(ADMIN_ID, "Qaysi mahsulotni tahrirlamoqchisiz?", reply_markup=markup)
+    bot.send_message(ADMIN_ID, "Qaysi mahsulotni tanlaysiz?", reply_markup=markup)
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('adm_edit_'))
 def admin_choose_option(call):
     if call.message.chat.id != ADMIN_ID: return
     prod_key = call.data.split('_')[2]
     
-    markup = types.InlineKeyboardMarkup(row_width=2)
+    if prod_key not in PRODUCTS:
+        bot.send_message(ADMIN_ID, "Bu mahsulot topilmadi.")
+        return
+
+    markup = types.InlineKeyboardMarkup(row_width=1)
     markup.add(
         types.InlineKeyboardButton("💰 Narxni o'zgartirish", callback_data=f"changep_{prod_key}"),
-        types.InlineKeyboardButton("📊 Soni (Qoldiq)ni o'zgartirish", callback_data=f"changec_{prod_key}")
+        types.InlineKeyboardButton("📊 Soni (Qoldiq)ni o'zgartirish", callback_data=f"changec_{prod_key}"),
+        types.InlineKeyboardButton("🗑 Mahsulotni o'chirish", callback_data=f"deletep_{prod_key}")
     )
-    bot.send_message(ADMIN_ID, f"📌 **{PRODUCTS[prod_key]['name_uz']}** bo'yicha nimani o'zgartirasiz?", reply_markup=markup)
+    bot.send_message(ADMIN_ID, f"📌 **{PRODUCTS[prod_key]['name_uz']}** bo'yicha nimani amalga oshirasiz?", reply_markup=markup)
+
+# Mahsulotni o'chirish
+@bot.callback_query_handler(func=lambda call: call.data.startswith('deletep_'))
+def admin_delete_product(call):
+    if call.message.chat.id != ADMIN_ID: return
+    prod_key = call.data.split('_')[1]
+    
+    if prod_key in PRODUCTS:
+        deleted_name = PRODUCTS[prod_key]['name_uz']
+        del PRODUCTS[prod_key]
+        bot.send_message(ADMIN_ID, f"🗑 **{deleted_name}** mahsulotlar ro'yxatidan muvaffaqiyatli o'chirib tashlandi!")
+    else:
+        bot.send_message(ADMIN_ID, "❌ Mahsulot topilmadi yoki allaqachon o'chirilgan.")
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith(('changep_', 'changec_')))
 def admin_input_prompt(call):
@@ -305,12 +395,12 @@ def admin_add_get_category(call):
     cat = call.data.split('_')[1]
     admin_temp_data[ADMIN_ID] = {"category": cat}
     
-    msg = bot.send_message(ADMIN_ID, "✍️ Yangi mahsulot **nomini** kiriting (masalan: Mars shokoladi):")
+    msg = bot.send_message(ADMIN_ID, "✍️ Yangi mahsulot **nomini** kiriting (masalan: Pepsi 0.5L):")
     bot.register_next_step_handler(msg, admin_add_get_name)
 
 def admin_add_get_name(message):
     admin_temp_data[ADMIN_ID]["name"] = message.text
-    msg = bot.send_message(ADMIN_ID, f"✍️ `{message.text}` uchun **narxni** faqat raqamda kiriting (masalan: 11000):")
+    msg = bot.send_message(ADMIN_ID, f"✍️ `{message.text}` uchun **narxni** faqat raqamda kiriting (masalan: 9000):")
     bot.register_next_step_handler(msg, admin_add_get_price)
 
 def admin_add_get_price(message):
@@ -318,7 +408,7 @@ def admin_add_get_price(message):
         bot.send_message(ADMIN_ID, "❌ Noto'g'ri narx! Qaytadan `/admin` deb yozib urinib ko'ring.")
         return
     admin_temp_data[ADMIN_ID]["price"] = int(message.text)
-    msg = bot.send_message(ADMIN_ID, f"✍️ Apparatga bu mahsulotdan **nechta (dona)** qo'yildingiz? (masalan: 10):")
+    msg = bot.send_message(ADMIN_ID, f"✍️ Apparatga bu mahsulotdan **nechta (dona)** qo'ydingiz? (masalan: 15):")
     bot.register_next_step_handler(msg, admin_add_finish)
 
 def admin_add_finish(message):
@@ -329,8 +419,8 @@ def admin_add_finish(message):
     count = int(message.text)
     data = admin_temp_data[ADMIN_ID]
     
-    # Kalit hosil qilish (id)
-    new_key = f"prod_{len(PRODUCTS) + 1}"
+    # Noyob kalit hosil qilish
+    new_key = f"prod_{int(time.time())}"
     
     PRODUCTS[new_key] = {
         "name_uz": data["name"],
@@ -359,8 +449,7 @@ def send_reply_to_user(message, target_user_id):
     except Exception as e:
         bot.send_message(ADMIN_ID, f"❌ Xatolik: {e}")
 
-import time
-
+# 6. Avto-reconnect bilan 24/7 uzluksiz ishlovchi qism
 def run_bot():
     while True:
         try:
@@ -373,4 +462,3 @@ if __name__ == "__main__":
     t.start()
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
-
