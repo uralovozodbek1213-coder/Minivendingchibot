@@ -1,3 +1,5 @@
+import os
+from flask import Flask
 import telebot
 from telebot import types
 
@@ -6,6 +8,13 @@ bot = telebot.TeleBot(TOKEN)
 
 ADMIN_ID = 8481771373
 user_states = {}
+
+# Flask serverini yaratamiz (Render talabi uchun 24/7 ishlashi uchun)
+app = Flask(__name__)
+
+@app.route('/')
+def home():
+    return "Bot is running 24/7!"
 
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
@@ -39,13 +48,11 @@ def handle_user_content(message):
 
     category = "💡 TAKLIF" if state == "suggestion" else "⚠️ SHIKOYAT"
     
-    # Admin uchun inline tugma
     markup = types.InlineKeyboardMarkup()
     markup.add(types.InlineKeyboardButton("💬 Javob berish", callback_data=f"reply_{message.chat.id}"))
 
     user_info = f"📩 Yangi {category}!\n\nKimdan: @{user.username} ({user.first_name})\nID: {message.chat.id}"
 
-    # Adminga yuborish
     if message.content_type == 'text':
         bot.send_message(ADMIN_ID, f"{user_info}\n\nXabar: {message.text}", reply_markup=markup)
     elif message.content_type == 'photo':
@@ -53,7 +60,6 @@ def handle_user_content(message):
     elif message.content_type == 'video':
         bot.send_video(ADMIN_ID, message.video.file_id, caption=f"{user_info}\n\nIzoh: {message.caption or ''}", reply_markup=markup)
 
-    # Mijozga yuboriladigan chiroyli javoblar
     if state == "suggestion":
         bot.send_message(
             message.chat.id, 
@@ -71,7 +77,6 @@ def handle_user_content(message):
     
     user_states.pop(message.chat.id, None)
 
-# Admin javob berish tugmasini bosganda
 @bot.callback_query_handler(func=lambda call: call.data.startswith('reply_'))
 def ask_admin_reply(call):
     target_user_id = call.data.split('_')[1]
@@ -85,5 +90,15 @@ def send_reply_to_user(message, target_user_id):
     except Exception as e:
         bot.send_message(ADMIN_ID, f"❌ Xatolik yuz berdi: {e}")
 
-print("Bot ishga tushdi...")
-bot.infinity_polling()
+# Botni fon rejimida ishga tushiramiz
+import threading
+def run_bot():
+    bot.infinity_polling(skip_pending=True)
+
+if __name__ == "__main__":
+    t = threading.Thread(target=run_bot)
+    t.start()
+    # Render beradigan port orqali Flask serverini ishga tushiramiz
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
+
