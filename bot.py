@@ -297,35 +297,84 @@ def process_out_of_stock_photo(message):
     first_name = html.escape(user.first_name or "")
     
     admin_alert = (
-        f"🚨 <b>DIQQAT! MAHSULOT TUGADI!</b>\n\n"
-        f"📌 <b>Tugagan mahsulot:</b> {prod_name}\n"
+        f"🚨 <b>DIQQAT! MAHSULOT TUGAGANI HAQIDA MURAJAAT!</b>\n\n"
+        f"📌 <b>Mahsulot:</b> {prod_name}\n"
         f"👤 <b>Mijoz:</b> @{username} ({first_name})\n"
-        f"🆔 <b>Mijoz ID:</b> <code>{message.chat.id}</code>"
+        f"🆔 <b>Mijoz ID:</b> <code>{message.chat.id}</code>\n\n"
+        f"<i>Mahsulot sonini 0 ga tushirishni tasdiqlaysizmi?</i>"
     )
     
+    # Admin uchun Tasdiqlash va Rad etish tugmalari
+    markup = types.InlineKeyboardMarkup(row_width=2)
+    btn_confirm = types.InlineKeyboardButton("✅ Tasdiqlash (Soni -> 0)", callback_data=f"confirmzero_{prod_key}_{message.chat.id}")
+    btn_reject = types.InlineKeyboardButton("❌ Rad etish", callback_data=f"rejectzero_{prod_key}_{message.chat.id}")
+    markup.add(btn_confirm, btn_reject)
+
     photo_file_id = message.photo[-1].file_id
-    bot.send_photo(ADMIN_ID, photo_file_id, caption=admin_alert, parse_mode="HTML")
+    bot.send_photo(ADMIN_ID, photo_file_id, caption=admin_alert, parse_mode="HTML", reply_markup=markup)
     
     if lang == 'ru':
         thanks_text = (
             "🌟 <b>Огромное спасибо!</b>\n\n"
-            "Ваше сообщение и фотография успешно отправлены администратору. "
-            "Мы быстро пополним автомат и исправим эту проблему! 🤝✨"
+            "Ваше сообщение и фотография отправлены администратору. "
+            "После проверки информации автомат будет обновлен! 🤝✨"
         )
     elif lang == 'en':
         thanks_text = (
             "🌟 <b>Thank you very much!</b>\n\n"
-            "Your report and photo have been successfully sent to the admin. "
-            "We will refill the machine and resolve the issue shortly! 🤝✨"
+            "Your report and photo have been sent to the admin. "
+            "The machine info will be updated after verification! 🤝✨"
         )
     else:
         thanks_text = (
             "🌟 <b>Katta rahmat!</b>\n\n"
             "Xabaringiz va rasmingiz adminga yetkazildi. "
-            "Biz tez orada apparatni to'ldiramiz va kamchilikni bartaraf etamiz! 🤝✨"
+            "Admin tomonidan tekshirilgach, apparat zudlik bilan yangilanadi! 🤝✨"
         )
         
     bot.send_message(message.chat.id, thanks_text, parse_mode="HTML", reply_markup=get_main_keyboard(lang))
+
+# ADMIN UCHUN TASDIQLASH VA RAD ETISH CALLBACK HANDLERLARI
+@bot.callback_query_handler(func=lambda call: call.data.startswith(('confirmzero_', 'rejectzero_')))
+def handle_zero_confirmation(call):
+    if call.message.chat.id != ADMIN_ID: return
+    
+    action, prod_key, user_id = call.data.split('_')
+    item = PRODUCTS.get(prod_key)
+    prod_name = html.escape(item['name_uz']) if item else "Mahsulot"
+    user_lang_code = user_lang.get(int(user_id), 'uz')
+
+    if action == "confirmzero":
+        if prod_key in PRODUCTS:
+            PRODUCTS[prod_key]['count'] = 0
+            save_products(PRODUCTS)
+            
+        bot.edit_message_caption(
+            chat_id=call.message.chat.id, 
+            message_id=call.message.message_id, 
+            caption=call.message.caption + f"\n\n<b>✅ ADMIN TAROFIDAN TASDIQLANDI!</b> Soni 0 ga tushirildi.", 
+            parse_mode="HTML"
+        )
+        bot.answer_callback_query(call.id, "✅ Mahsulot soni 0 deb saqlandi!", show_alert=True)
+        
+        # Mijozga bildirishnoma yuborish
+        msg_to_user = f"✅ <b>{prod_name}</b> bo'yicha yuborgan xabaringiz admin tomonidan tasdiqlandi. Tez orada apparat to'ldiriladi! Rahmat!"
+        try: bot.send_message(user_id, msg_to_user, parse_mode="HTML")
+        except: pass
+
+    elif action == "rejectzero":
+        bot.edit_message_caption(
+            chat_id=call.message.chat.id, 
+            message_id=call.message.message_id, 
+            caption=call.message.caption + f"\n\n<b>❌ RAD ETILDI.</b> Mahsulot soni o'zgartirilmadi.", 
+            parse_mode="HTML"
+        )
+        bot.answer_callback_query(call.id, "❌ So'rov rad etildi.", show_alert=True)
+        
+        # Mijozga bildirishnoma yuborish
+        msg_to_user = f"ℹ️ <b>{prod_name}</b> bo'yicha yuborgan murojaatingiz ko'rib chiqildi. E'tiboringiz uchun rahmat!"
+        try: bot.send_message(user_id, msg_to_user, parse_mode="HTML")
+        except: pass
 
 @bot.message_handler(func=lambda message: message.text in ["🌐 Tilni tanlash", "🌐 Сменить язык", "🌐 Change Language"])
 def change_language_menu(message):
