@@ -9,11 +9,11 @@ bot = telebot.TeleBot(TOKEN)
 
 ADMIN_ID = 8481771373
 
-# Foydalanuvchi holatlari va tanlagan tillari
+# Состояния пользователей и выбранные языки
 user_states = {}
 user_lang = {}
 
-# Mahsulotlar va ularning boshlang'ich narxlari (Admin buni Telegram'dan o'zgartira oladi)
+# Товары и начальные цены (Администратор может изменять их через Telegram)
 PRODUCTS = {
     "espresso": {"name_uz": "Espresso", "name_ru": "Эспрессо", "price": 8000, "category": "hot"},
     "americano": {"name_uz": "Americano", "name_ru": "Американо", "price": 10000, "category": "hot"},
@@ -24,14 +24,14 @@ PRODUCTS = {
     "water": {"name_uz": "Gazlangan suvlar", "name_ru": "Газированные напитки", "price": 5000, "category": "snack"}
 }
 
-# Flask server (Render 24/7 ishlashi uchun)
+# Сервер Flask (для работы 24/7 на Render)
 app = Flask(__name__)
 
 @app.route('/')
 def home():
     return "Bot is running 24/7!"
 
-# Asosiy menyu tugmalarini chiqarish funksiyasi
+# Функция создания главного меню
 def get_main_keyboard(lang):
     keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
     if lang == 'ru':
@@ -46,11 +46,9 @@ def get_main_keyboard(lang):
         btn_complaint = types.KeyboardButton("⚠️ Shikoyatim bor")
         
     keyboard.add(btn_products, btn_lang, btn_suggest, btn_complaint)
-    
-    # Admin uchun maxsus narx o'zgartirish tugmasi
     return keyboard
 
-# 1. /start - Birinchi kirganda TIL TANLASH
+# 1. /start - Приветствие и выбор языка
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
     markup = types.InlineKeyboardMarkup()
@@ -59,13 +57,21 @@ def send_welcome(message):
     markup.add(btn_uz, btn_ru)
     
     user_name = message.from_user.first_name
+    
+    welcome_text = (
+        f"Assalomu alaykum, {user_name}!\n"
+        f"Bizning vending xizmatimiz botiga xush kelibsiz. Sizga qanday yordam bera olaman?\n\n"
+        f"Iltimos, muloqot tilini tanlang:\n"
+        f"Здравствуйте! Пожалуйста, выберите язык:"
+    )
+    
     bot.send_message(
         message.chat.id, 
-        f"Assalomu alaykum, {user_name}!\nIltimos, muloqot tilini tanlang:\n\nЗдравствуйте! Пожалуйста, выберите язык:", 
+        welcome_text, 
         reply_markup=markup
     )
 
-# Til tanlanganda ishlaydigan qism
+# Обработка выбора языка
 @bot.callback_query_handler(func=lambda call: call.data.startswith('setlang_'))
 def handle_language_choice(call):
     lang = call.data.split('_')[1]
@@ -80,7 +86,7 @@ def handle_language_choice(call):
         
     bot.send_message(call.message.chat.id, text, reply_markup=get_main_keyboard(lang))
 
-# 2. Mahsulotlar va Narxlarni ko'rsatish
+# 2. Отображение товаров и цен
 @bot.message_handler(func=lambda message: message.text in ["☕ Mahsulotlar va Narxlar", "☕ Товары и Цены"])
 def show_products(message):
     lang = user_lang.get(message.chat.id, 'uz')
@@ -108,12 +114,12 @@ def show_products(message):
 
     bot.send_message(message.chat.id, text)
 
-# 3. Tilni qayta tanlash tugmasi
+# 3. Смена языка
 @bot.message_handler(func=lambda message: message.text in ["🌐 Tilni tanlash", "🌐 Сменить язык"])
 def change_language_menu(message):
     send_welcome(message)
 
-# 4. ADMIN UCHUN: NARXLARNI O'ZGARTIRISH (`/admin` yoki `/setprice`)
+# 4. Для АДМИНИСТРАТОРА: Изменение цен (/admin или /setprice)
 @bot.message_handler(commands=['setprice', 'admin'])
 def admin_panel(message):
     if message.chat.id != ADMIN_ID:
@@ -144,7 +150,7 @@ def update_product_price(message, prod_key):
     PRODUCTS[prod_key]['price'] = new_price
     bot.send_message(ADMIN_ID, f"✅ `{PRODUCTS[prod_key]['name_uz']}` narxi **{new_price:,} so'm** qilib o'zgartirildi!\n\nEndi barcha foydalanuvchilar yangi narxni ko'rishadi.")
 
-# 5. Taklif va Shikoyatlar
+# 5. Обработка предложений и жалоб
 @bot.message_handler(func=lambda message: message.text in ["💡 Taklifim bor", "💡 Есть предложение", "⚠️ Shikoyatim bor", "⚠️ Есть жалоба"] and message.chat.id != ADMIN_ID)
 def handle_choice(message):
     lang = user_lang.get(message.chat.id, 'uz')
@@ -184,7 +190,7 @@ def handle_user_content(message):
     bot.send_message(message.chat.id, thanks_msg, reply_markup=get_main_keyboard(lang))
     user_states.pop(message.chat.id, None)
 
-# Admin javob berishi
+# Ответ администратора
 @bot.callback_query_handler(func=lambda call: call.data.startswith('reply_'))
 def ask_admin_reply(call):
     target_user_id = call.data.split('_')[1]
