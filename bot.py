@@ -359,11 +359,18 @@ def send_reply_to_user(message, target_user_id):
     except Exception as e:
         bot.send_message(ADMIN_ID, f"❌ Xatolik: {e}")
 
+import time
+
 def run_bot():
-    bot.infinity_polling(skip_pending=True)
+    while True:
+        try:
+            bot.infinity_polling(timeout=20, long_polling_timeout=10, skip_pending=True)
+        except Exception as e:
+            time.sleep(3)
 
 if __name__ == "__main__":
     t = threading.Thread(target=run_bot)
     t.start()
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
+
