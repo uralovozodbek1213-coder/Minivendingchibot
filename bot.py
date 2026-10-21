@@ -27,11 +27,11 @@ DATA_FILE = "products.json"
 def load_products():
     if not os.path.exists(DATA_FILE):
         default_products = {
-            "redbull": {"name_uz": "Red Bull 0.25L", "name_ru": "Red Bull 0.25Л", "price": 18000, "count": 10, "category": "energy"},
-            "flash": {"name_uz": "Flash Up 0.45L", "name_ru": "Flash Up 0.45Л", "price": 8000, "count": 15, "category": "energy"},
-            "pepsi": {"name_uz": "Pepsi 0.5L", "name_ru": "Пепси 0.5Л", "price": 9000, "count": 15, "category": "carbonated"},
-            "snickers": {"name_uz": "Snickers", "name_ru": "Snickers", "price": 10000, "count": 8, "category": "snack"},
-            "lays": {"name_uz": "Lays chipslari", "name_ru": "Чипсы Lays", "price": 9000, "count": 5, "category": "snack"}
+            "redbull": {"name_uz": "Red Bull 0.25L", "name_ru": "Red Bull 0.25Л", "name_en": "Red Bull 0.25L", "price": 18000, "count": 10, "category": "energy"},
+            "flash": {"name_uz": "Flash Up 0.45L", "name_ru": "Flash Up 0.45Л", "name_en": "Flash Up 0.45L", "price": 8000, "count": 15, "category": "energy"},
+            "pepsi": {"name_uz": "Pepsi 0.5L", "name_ru": "Пепси 0.5Л", "name_en": "Pepsi 0.5L", "price": 9000, "count": 15, "category": "carbonated"},
+            "snickers": {"name_uz": "Snickers", "name_ru": "Snickers", "name_en": "Snickers", "price": 10000, "count": 8, "category": "snack"},
+            "lays": {"name_uz": "Lays chipslari", "name_ru": "Чипсы Lays", "name_en": "Lays Chips", "price": 9000, "count": 5, "category": "snack"}
         }
         save_products(default_products)
         return default_products
@@ -56,7 +56,7 @@ def home():
 # Telegram menyusida / bosilganda ko'rinadigan buyruqlar
 def set_bot_commands():
     commands = [
-        types.BotCommand("start", "Botni qayta ishga tushirish 🔄"),
+        types.BotCommand("start", "Botni qayta ishga tushirish / Restart bot 🔄"),
         types.BotCommand("admin", "Admin panel 🛠")
     ]
     bot.set_my_commands(commands)
@@ -68,6 +68,11 @@ def get_main_keyboard(lang):
         btn_lang = types.KeyboardButton("🌐 Сменить язык")
         btn_suggest = types.KeyboardButton("💡 Есть предложение")
         btn_complaint = types.KeyboardButton("⚠️ Есть жалоба")
+    elif lang == 'en':
+        btn_products = types.KeyboardButton("☕ Products & Prices")
+        btn_lang = types.KeyboardButton("🌐 Change Language")
+        btn_suggest = types.KeyboardButton("💡 Suggestion")
+        btn_complaint = types.KeyboardButton("⚠️ Complaint")
     else:
         btn_products = types.KeyboardButton("☕ Mahsulotlar va Narxlar")
         btn_lang = types.KeyboardButton("🌐 Tilni tanlash")
@@ -83,14 +88,16 @@ def send_welcome(message):
     markup = types.InlineKeyboardMarkup()
     btn_uz = types.InlineKeyboardButton("🇺🇿 O'zbekcha", callback_data="setlang_uz")
     btn_ru = types.InlineKeyboardButton("🇷🇺 Русский", callback_data="setlang_ru")
-    markup.add(btn_uz, btn_ru)
+    btn_en = types.InlineKeyboardButton("🇬🇧 English", callback_data="setlang_en")
+    markup.add(btn_uz, btn_ru, btn_en)
     
     user_name = message.from_user.first_name
     welcome_text = (
         f"Assalomu alaykum, hurmatli {user_name}! 😊\n"
         f"Bizning vending xizmatimiz botiga xush kelibsiz.\n\n"
-        f"Iltimos, o'zingizga qulay muloqot tilini tanlang:\n"
-        f"Здравствуйте! Пожалуйста, выберите удобный язык:"
+        f"Iltimos, muloqot tilini tanlang:\n"
+        f"Пожалуйста, выберите язык:\n"
+        f"Please select your language:"
     )
     bot.send_message(message.chat.id, welcome_text, reply_markup=markup)
 
@@ -100,15 +107,17 @@ def handle_language_choice(call):
     user_lang[call.message.chat.id] = lang
     bot.delete_message(call.message.chat.id, call.message.message_id)
     
-    text = (
-        "O'zbek tili tanlandi! 🇺🇿\n\nSizga xizmat ko'rsatishdan mamnunmiz! Quyidagi menyudan kerakli bo'limni tanlashingiz mumkin:" 
-        if lang == 'uz' else 
-        "Выбран русский язык! 🇷🇺\n\nРады помочь вам! Вы можете использовать меню ниже:"
-    )
+    if lang == 'ru':
+        text = "Выбран русский язык! 🇷🇺\n\nРады помочь вам! Вы можете использовать меню ниже:"
+    elif lang == 'en':
+        text = "English language selected! 🇬🇧\n\nWe are happy to serve you! Please use the menu below:"
+    else:
+        text = "O'zbek tili tanlandi! 🇺🇿\n\nSizga xizmat ko'rsatishdan mamnunmiz! Quyidagi menyudan kerakli bo'limni tanlashingiz mumkin:"
+        
     bot.send_message(call.message.chat.id, text, reply_markup=get_main_keyboard(lang))
 
 # 2. MIJOZ MENYUSI
-@bot.message_handler(func=lambda message: message.text in ["☕ Mahsulotlar va Narxlar", "☕ Товары и Цены"])
+@bot.message_handler(func=lambda message: message.text in ["☕ Mahsulotlar va Narxlar", "☕ Товары и Цены", "☕ Products & Prices"])
 def show_categories(message):
     lang = user_lang.get(message.chat.id, 'uz')
     markup = types.InlineKeyboardMarkup(row_width=1)
@@ -120,6 +129,13 @@ def show_categories(message):
             types.InlineKeyboardButton("🔙 Главное меню", callback_data="back_to_main")
         )
         text = "📂 Выберите категорию товаров:"
+    elif lang == 'en':
+        markup.add(
+            types.InlineKeyboardButton("🍫 Snacks & Sweets", callback_data="cat_snack"),
+            types.InlineKeyboardButton("🥤 Drinks", callback_data="maincat_drinks"),
+            types.InlineKeyboardButton("🔙 Main Menu", callback_data="back_to_main")
+        )
+        text = "📂 Select product category:"
     else:
         markup.add(
             types.InlineKeyboardButton("🍫 Snek va shirinliklar", callback_data="cat_snack"),
@@ -143,6 +159,14 @@ def show_drink_subcategories(call):
             types.InlineKeyboardButton("🔙 Назад", callback_data="back_to_cats")
         )
         text = "🥤 Выберите тип напитка:"
+    elif lang == 'en':
+        markup.add(
+            types.InlineKeyboardButton("⚡ Energy Drinks", callback_data="cat_energy"),
+            types.InlineKeyboardButton("🥤 Carbonated Drinks", callback_data="cat_carbonated"),
+            types.InlineKeyboardButton("💧 Still Drinks", callback_data="cat_still"),
+            types.InlineKeyboardButton("🔙 Back", callback_data="back_to_cats")
+        )
+        text = "🥤 Select drink type:"
     else:
         markup.add(
             types.InlineKeyboardButton("⚡ Energetik ichimliklar", callback_data="cat_energy"),
@@ -164,19 +188,29 @@ def show_products_in_category(call):
     for key, item in PRODUCTS.items():
         if item["category"] == cat:
             count_items += 1
-            name = item["name_ru"] if lang == 'ru' else item["name_uz"]
+            if lang == 'ru':
+                name = item.get("name_ru", item["name_uz"])
+            elif lang == 'en':
+                name = item.get("name_en", item["name_uz"])
+            else:
+                name = item["name_uz"]
             markup.add(types.InlineKeyboardButton(f"🔹 {name}", callback_data=f"prod_{key}"))
             
     back_target = "maincat_drinks" if cat in ["energy", "carbonated", "still"] else "back_to_cats"
-    btn_back = types.InlineKeyboardButton("🔙 Ortga" if lang == 'uz' else "🔙 Назад", callback_data=back_target)
-    markup.add(btn_back)
+    btn_text = "🔙 Ortga" if lang == 'uz' else ("🔙 Назад" if lang == 'ru' else "🔙 Back")
+    markup.add(types.InlineKeyboardButton(btn_text, callback_data=back_target))
 
     if count_items == 0:
-        empty_text = "Hozircha bu bo'limda mahsulot mavjud emas." if lang == 'uz' else "В этой категории пока нет товаров."
+        if lang == 'ru':
+            empty_text = "В этой категории пока нет товаров."
+        elif lang == 'en':
+            empty_text = "There are currently no products in this category."
+        else:
+            empty_text = "Hozircha bu bo'limda mahsulot mavjud emas."
         bot.edit_message_text(empty_text, call.message.chat.id, call.message.message_id, reply_markup=markup)
         return
             
-    text = "Выберите товар:" if lang == 'ru' else "Mahsulotni tanlang:"
+    text = "Выберите товар:" if lang == 'ru' else ("Select product:" if lang == 'en' else "Mahsulotni tanlang:")
     bot.edit_message_text(text, call.message.chat.id, call.message.message_id, reply_markup=markup)
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('prod_'))
@@ -185,18 +219,24 @@ def show_product_details(call):
     lang = user_lang.get(call.message.chat.id, 'uz')
     
     if prod_key not in PRODUCTS:
-        bot.answer_callback_query(call.id, "Mahsulot topilmadi yoki o'chirilgan!", show_alert=True)
+        alert_msg = "Mahsulot topilmadi!" if lang == 'uz' else ("Товар не найден!" if lang == 'ru' else "Product not found!")
+        bot.answer_callback_query(call.id, alert_msg, show_alert=True)
         show_categories(call.message)
         return
 
     item = PRODUCTS[prod_key]
-    name = item["name_ru"] if lang == 'ru' else item["name_uz"]
-    
     if lang == 'ru':
+        name = item.get("name_ru", item["name_uz"])
         text = f"📦 **Товар:** {name}\n💰 **Цена:** {item['price']:,} сум\n📊 **В наличии:** {item['count']} шт."
         btn_out = types.InlineKeyboardButton("🚨 Сообщить: Товар закончился", callback_data=f"outofstock_{prod_key}")
         btn_back = types.InlineKeyboardButton("🔙 Назад к списку", callback_data=f"cat_{item['category']}")
+    elif lang == 'en':
+        name = item.get("name_en", item["name_uz"])
+        text = f"📦 **Product:** {name}\n💰 **Price:** {item['price']:,} UZS\n📊 **In stock:** {item['count']} pcs"
+        btn_out = types.InlineKeyboardButton("🚨 Report: Out of stock", callback_data=f"outofstock_{prod_key}")
+        btn_back = types.InlineKeyboardButton("🔙 Back to list", callback_data=f"cat_{item['category']}")
     else:
+        name = item["name_uz"]
         text = f"📦 **Mahsulot:** {name}\n💰 **Narxi:** {item['price']:,} so'm\n📊 **Qurilmada mavjud:** {item['count']} ta"
         btn_out = types.InlineKeyboardButton("🚨 Mahsulot tugadi (Xabar berish)", callback_data=f"outofstock_{prod_key}")
         btn_back = types.InlineKeyboardButton("🔙 Ortga", callback_data=f"cat_{item['category']}")
@@ -226,6 +266,8 @@ def start_report_out_of_stock(call):
     
     if lang == 'ru':
         msg_text = "📸 Пожалуйста, отправьте фотографию автомата или полки, подтверждающую, что товар закончился:"
+    elif lang == 'en':
+        msg_text = "📸 Please send a photo of the vending machine shelf confirming the product is out of stock:"
     else:
         msg_text = "📸 Iltimos, mahsulot tugaganini tasdiqlash uchun apparatdagi o'sha joyning **rasmini yuboring**:"
         
@@ -238,6 +280,8 @@ def process_out_of_stock_photo(message, prod_key):
     if message.content_type != 'photo':
         if lang == 'ru':
             error_text = "❌ Это не фотография. Пожалуйста, отправьте фото товара/автомата:"
+        elif lang == 'en':
+            error_text = "❌ This is not a photo. Please send a photo of the vending machine:"
         else:
             error_text = "❌ Rasm yuborilmadi. Iltimos, apparatdagi mahsulot joyining rasmini tushirib yuboring:"
         msg = bot.send_message(message.chat.id, error_text)
@@ -269,6 +313,12 @@ def process_out_of_stock_photo(message, prod_key):
             "Ваше сообщение и фотография отправлены нашей службе поддержки. "
             "Благодаря вашей помощи наш сервис станет еще лучше! 🤝✨"
         )
+    elif lang == 'en':
+        thanks_text = (
+            "🌟 **Thank you very much!**\n\n"
+            "Your photo and report have been sent to our support team. "
+            "Thanks to your help, our service will get even better! 🤝✨"
+        )
     else:
         thanks_text = (
             "🌟 **Katta rahmat!**\n\n"
@@ -278,15 +328,20 @@ def process_out_of_stock_photo(message, prod_key):
         
     bot.send_message(message.chat.id, thanks_text, parse_mode="Markdown", reply_markup=get_main_keyboard(lang))
 
-@bot.message_handler(func=lambda message: message.text in ["🌐 Tilni tanlash", "🌐 Сменить язык"])
+@bot.message_handler(func=lambda message: message.text in ["🌐 Tilni tanlash", "🌐 Сменить язык", "🌐 Change Language"])
 def change_language_menu(message):
     send_welcome(message)
 
 # TAKLIF VA SHIKOYATLAR
-@bot.message_handler(func=lambda message: message.text in ["💡 Taklifim bor", "💡 Есть предложение"])
+@bot.message_handler(func=lambda message: message.text in ["💡 Taklifim bor", "💡 Есть предложение", "💡 Suggestion"])
 def handle_suggestion_button(message):
     lang = user_lang.get(message.chat.id, 'uz')
-    msg_text = "💡 Biz xizmatimizni yanada yaxshilashga intilamiz. Taklifingiz bo'lsa, matn yoki rasm ko'rinishida yuboring:" if lang == 'uz' else "💡 Напишите ваше предложение:"
+    if lang == 'ru':
+        msg_text = "💡 Напишите ваше предложение:"
+    elif lang == 'en':
+        msg_text = "💡 Please write your suggestion:"
+    else:
+        msg_text = "💡 Biz xizmatimizni yanada yaxshilashga intilamiz. Taklifingiz bo'lsa, matn yoki rasm ko'rinishida yuboring:"
     msg = bot.send_message(message.chat.id, msg_text)
     bot.register_next_step_handler(msg, process_suggestion)
 
@@ -302,13 +357,23 @@ def process_suggestion(message):
     elif message.content_type == 'photo':
         bot.send_photo(ADMIN_ID, message.photo[-1].file_id, caption=f"{user_info}\n\nIzoh: {message.caption or ''}", parse_mode="Markdown", reply_markup=markup)
         
-    thanks = "Qimmatli taklifingiz uchun tashakkur! Biz uni albatta ko'rib chiqamiz. 😊" if lang == 'uz' else "Спасибо за ваше предложение! Мы обязательно его рассмотрим. 😊"
+    if lang == 'ru':
+        thanks = "Спасибо за ваше предложение! Мы обязательно его рассмотрим. 😊"
+    elif lang == 'en':
+        thanks = "Thank you for your suggestion! We will definitely consider it. 😊"
+    else:
+        thanks = "Qimmatli taklifingiz uchun tashakkur! Biz uni albatta ko'rib chiqamiz. 😊"
     bot.send_message(message.chat.id, thanks, reply_markup=get_main_keyboard(lang))
 
-@bot.message_handler(func=lambda message: message.text in ["⚠️ Shikoyatim bor", "⚠️ Есть жалоба"])
+@bot.message_handler(func=lambda message: message.text in ["⚠️ Shikoyatim bor", "⚠️ Есть жалоба", "⚠️ Complaint"])
 def handle_complaint_button(message):
     lang = user_lang.get(message.chat.id, 'uz')
-    msg_text = "⚠️ Yuzaga kelgan noqulaylik uchun uzr so'raymiz! Shikoyatingiz tafsilotlarini yozib yoki rasm bilan yuboring:" if lang == 'uz' else "⚠️ Напишите подробности вашей жалобы:"
+    if lang == 'ru':
+        msg_text = "⚠️ Напишите подробности вашей жалобы:"
+    elif lang == 'en':
+        msg_text = "⚠️ Please write the details of your complaint:"
+    else:
+        msg_text = "⚠️ Yuzaga kelgan noqulaylik uchun uzr so'raymiz! Shikoyatingiz tafsilotlarini yozib yoki rasm bilan yuboring:"
     msg = bot.send_message(message.chat.id, msg_text)
     bot.register_next_step_handler(msg, process_complaint)
 
@@ -324,7 +389,12 @@ def process_complaint(message):
     elif message.content_type == 'photo':
         bot.send_photo(ADMIN_ID, message.photo[-1].file_id, caption=f"{user_info}\n\nIzoh: {message.caption or ''}", parse_mode="Markdown", reply_markup=markup)
         
-    thanks = "Murojaatingiz qabul qilindi. Muammoni tez orada hal etishga harakat qilamiz!" if lang == 'uz' else "Ваше обращение принято. Мы постараемся решить проблему в кратчайшие сроки!"
+    if lang == 'ru':
+        thanks = "Ваше обращение принято. Мы постараемся решить проблему в кратчайшие сроки!"
+    elif lang == 'en':
+        thanks = "Your complaint has been received. We will resolve the issue as soon as possible!"
+    else:
+        thanks = "Murojaatingiz qabul qilindi. Muammoni tez orada hal etishga harakat qilamiz!"
     bot.send_message(message.chat.id, thanks, reply_markup=get_main_keyboard(lang))
 
 # 3. ADMIN PANEL (/admin, /setprice, hamda /a qisqartmasi)
@@ -540,6 +610,7 @@ def admin_add_finish(message):
     PRODUCTS[new_key] = {
         "name_uz": data["name"],
         "name_ru": data["name"],
+        "name_en": data["name"],
         "price": data["price"],
         "count": count,
         "category": data["category"]
@@ -565,7 +636,7 @@ def ask_admin_reply(call):
 
 def send_reply_to_user(message, target_user_id):
     try:
-        bot.send_message(target_user_id, f"💬 **Ma'muriyatdan javob:**\n\n{message.text}", parse_mode="Markdown")
+        bot.send_message(target_user_id, f"💬 **Ma'muriyatdan javob / Response from support:**\n\n{message.text}", parse_mode="Markdown")
         bot.send_message(ADMIN_ID, "✅ Javob foydalanuvchiga yetkazildi!")
     except Exception as e:
         bot.send_message(ADMIN_ID, f"❌ Xatolik yuz berdi: {e}")
@@ -573,7 +644,7 @@ def send_reply_to_user(message, target_user_id):
 # AVTO-RECONNECT 24/7
 def run_bot():
     try:
-        set_bot_commands() # / belgisi bosilganda menyuda ko'rinadi
+        set_bot_commands()
     except Exception as e:
         print(f"Buyruqlarni o'rnatishda xatolik: {e}")
         
