@@ -53,11 +53,11 @@ app = Flask(__name__)
 def home():
     return "Bot is running 24/7!"
 
-# Telegram menyusida / bosilganda ko'rinadigan buyruqlar
 def set_bot_commands():
     commands = [
         types.BotCommand("start", "Botni qayta ishga tushirish / Restart bot 🔄"),
-        types.BotCommand("admin", "Admin panel 🛠")
+        types.BotCommand("admin", "Admin panel 🛠"),
+        types.BotCommand("a", "Admin panel (qisqa) 🛠")
     ]
     bot.set_my_commands(commands)
 
@@ -254,7 +254,7 @@ def back_to_categories(call):
 def back_to_main_menu(call):
     bot.delete_message(call.message.chat.id, call.message.message_id)
 
-# MAHSULOT TUGAGANI HAQIDA RASMLI XABAR BERISH
+# MAHSULOT TUGAGANI HAQIDA RASMLI XABAR YUBORISH
 @bot.callback_query_handler(func=lambda call: call.data.startswith('outofstock_'))
 def start_report_out_of_stock(call):
     prod_key = call.data.replace('outofstock_', '', 1)
@@ -264,6 +264,8 @@ def start_report_out_of_stock(call):
     lang = user_lang.get(call.message.chat.id, 'uz')
     bot.answer_callback_query(call.id)
     
+    user_states[call.message.chat.id] = prod_key  # Mahsulot kalitini saqlaymiz
+    
     if lang == 'ru':
         msg_text = "📸 Пожалуйста, отправьте фотографию автомата или полки, подтверждающую, что товар закончился:"
     elif lang == 'en':
@@ -272,10 +274,11 @@ def start_report_out_of_stock(call):
         msg_text = "📸 Iltimos, mahsulot tugaganini tasdiqlash uchun apparatdagi o'sha joyning **rasmini yuboring**:"
         
     msg = bot.send_message(call.message.chat.id, msg_text, parse_mode="Markdown")
-    bot.register_next_step_handler(msg, process_out_of_stock_photo, prod_key)
+    bot.register_next_step_handler(msg, process_out_of_stock_photo)
 
-def process_out_of_stock_photo(message, prod_key):
+def process_out_of_stock_photo(message):
     lang = user_lang.get(message.chat.id, 'uz')
+    prod_key = user_states.get(message.chat.id)
     
     if message.content_type != 'photo':
         if lang == 'ru':
@@ -285,15 +288,12 @@ def process_out_of_stock_photo(message, prod_key):
         else:
             error_text = "❌ Rasm yuborilmadi. Iltimos, apparatdagi mahsulot joyining rasmini tushirib yuboring:"
         msg = bot.send_message(message.chat.id, error_text)
-        bot.register_next_step_handler(msg, process_out_of_stock_photo, prod_key)
+        bot.register_next_step_handler(msg, process_out_of_stock_photo)
         return
 
-    item = PRODUCTS.get(prod_key)
-    if not item:
-        return
-
+    item = PRODUCTS.get(prod_key, {})
+    prod_name = item.get('name_uz', 'Noma\'lum mahsulot')
     user = message.from_user
-    prod_name = item['name_uz']
     
     # Adminga rasm va ma'lumotlarni yuborish
     admin_alert = (
@@ -306,24 +306,24 @@ def process_out_of_stock_photo(message, prod_key):
     photo_file_id = message.photo[-1].file_id
     bot.send_photo(ADMIN_ID, photo_file_id, caption=admin_alert, parse_mode="Markdown")
     
-    # Mijozga minnatdorchilik bildirilgan xabar
+    # Mijozga chiroyli va samimiy javob
     if lang == 'ru':
         thanks_text = (
-            "🌟 **Большое спасибо!**\n\n"
-            "Ваше сообщение и фотография отправлены нашей службе поддержки. "
-            "Благодаря вашей помощи наш сервис станет еще лучше! 🤝✨"
+            "🌟 **Огромное спасибо!**\n\n"
+            "Ваше сообщение и фотография успешно отправлены администратору. "
+            "Мы быстро пополним автомат и исправим эту проблему! 🤝✨"
         )
     elif lang == 'en':
         thanks_text = (
             "🌟 **Thank you very much!**\n\n"
-            "Your photo and report have been sent to our support team. "
-            "Thanks to your help, our service will get even better! 🤝✨"
+            "Your report and photo have been successfully sent to the admin. "
+            "We will refill the machine and resolve the issue shortly! 🤝✨"
         )
     else:
         thanks_text = (
             "🌟 **Katta rahmat!**\n\n"
-            "E'tiboringiz va yuborgan rasmingiz uchun tashakkur! "
-            "Siz bizning xizmatimiz rivojiga va apparatlarimiz tezkor to'lishiga juda katta hissa qo'shdingiz. ✨"
+            "Xabaringiz va rasmingiz adminga yetkazildi. "
+            "Biz tez orada apparatni to'ldiramiz va kamchilikni bartaraf etamiz! 🤝✨"
         )
         
     bot.send_message(message.chat.id, thanks_text, parse_mode="Markdown", reply_markup=get_main_keyboard(lang))
@@ -337,11 +337,11 @@ def change_language_menu(message):
 def handle_suggestion_button(message):
     lang = user_lang.get(message.chat.id, 'uz')
     if lang == 'ru':
-        msg_text = "💡 Напишите ваше предложение:"
+        msg_text = "💡 Напишите ваше предложение (текстом или отправьте фото):"
     elif lang == 'en':
-        msg_text = "💡 Please write your suggestion:"
+        msg_text = "💡 Please write your suggestion (text or send a photo):"
     else:
-        msg_text = "💡 Biz xizmatimizni yanada yaxshilashga intilamiz. Taklifingiz bo'lsa, matn yoki rasm ko'rinishida yuboring:"
+        msg_text = "💡 Biz xizmatimizni yanada yaxshilashga intilamiz. Taklifingizni matn yoki rasm ko'rinishida yuboring:"
     msg = bot.send_message(message.chat.id, msg_text)
     bot.register_next_step_handler(msg, process_suggestion)
 
@@ -358,20 +358,21 @@ def process_suggestion(message):
         bot.send_photo(ADMIN_ID, message.photo[-1].file_id, caption=f"{user_info}\n\nIzoh: {message.caption or ''}", parse_mode="Markdown", reply_markup=markup)
         
     if lang == 'ru':
-        thanks = "Спасибо за ваше предложение! Мы обязательно его рассмотрим. 😊"
+        thanks = "🌟 **Большое спасибо!**\nВаше предложение успешно отправлено администратору. Оно обязательно будет учтено! 💡😊"
     elif lang == 'en':
-        thanks = "Thank you for your suggestion! We will definitely consider it. 😊"
+        thanks = "🌟 **Thank you very much!**\nYour suggestion has been sent to the admin. We will definitely consider it! 💡😊"
     else:
-        thanks = "Qimmatli taklifingiz uchun tashakkur! Biz uni albatta ko'rib chiqamiz. 😊"
-    bot.send_message(message.chat.id, thanks, reply_markup=get_main_keyboard(lang))
+        thanks = "🌟 **Katta rahmat!**\nQimmatli taklifingiz adminga yetkazildi. Taklifingiz albatta inobatga olinadi va xizmatimizni yanada rivojlantirishga yordam beradi! 💡😊"
+        
+    bot.send_message(message.chat.id, thanks, parse_mode="Markdown", reply_markup=get_main_keyboard(lang))
 
 @bot.message_handler(func=lambda message: message.text in ["⚠️ Shikoyatim bor", "⚠️ Есть жалоба", "⚠️ Complaint"])
 def handle_complaint_button(message):
     lang = user_lang.get(message.chat.id, 'uz')
     if lang == 'ru':
-        msg_text = "⚠️ Напишите подробности вашей жалобы:"
+        msg_text = "⚠️ Напишите подробности вашей жалобы (текстом или отправьте фото):"
     elif lang == 'en':
-        msg_text = "⚠️ Please write the details of your complaint:"
+        msg_text = "⚠️ Please write the details of your complaint (text or send a photo):"
     else:
         msg_text = "⚠️ Yuzaga kelgan noqulaylik uchun uzr so'raymiz! Shikoyatingiz tafsilotlarini yozib yoki rasm bilan yuboring:"
     msg = bot.send_message(message.chat.id, msg_text)
@@ -390,12 +391,13 @@ def process_complaint(message):
         bot.send_photo(ADMIN_ID, message.photo[-1].file_id, caption=f"{user_info}\n\nIzoh: {message.caption or ''}", parse_mode="Markdown", reply_markup=markup)
         
     if lang == 'ru':
-        thanks = "Ваше обращение принято. Мы постараемся решить проблему в кратчайшие сроки!"
+        thanks = "Приносим свои извинения за неудобства! 🙏 Ваше обращение отправлено администратору. Мы исправим ошибку и решим вопрос в кратчайшие сроки!"
     elif lang == 'en':
-        thanks = "Your complaint has been received. We will resolve the issue as soon as possible!"
+        thanks = "We sincerely apologize for the inconvenience! 🙏 Your complaint has been sent to the admin. We will fix the issue and resolve it as soon as possible!"
     else:
-        thanks = "Murojaatingiz qabul qilindi. Muammoni tez orada hal etishga harakat qilamiz!"
-    bot.send_message(message.chat.id, thanks, reply_markup=get_main_keyboard(lang))
+        thanks = "Yuzaga kelgan noqulaylik va xatolik uchun chin ko'ngildan uzr so'raymiz! 🙏 Shikoyatingiz adminga yetkazildi. Xatoni darhol to'g'rilaymiz va vaziyatni nazoratga olamiz."
+        
+    bot.send_message(message.chat.id, thanks, parse_mode="Markdown", reply_markup=get_main_keyboard(lang))
 
 # 3. ADMIN PANEL (/admin, /setprice, hamda /a qisqartmasi)
 @bot.message_handler(commands=['admin', 'setprice', 'a'])
