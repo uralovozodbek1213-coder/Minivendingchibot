@@ -22,7 +22,6 @@ SUB_CATEGORIES = {
     "still": "💧 Gazlanmagan ichimliklar"
 }
 
-# MAHSULOTLARNI FAYLGA SAQLASH VA O me'yorida O'QISH TIZIMI
 DATA_FILE = "products.json"
 
 def load_products():
@@ -170,7 +169,8 @@ def show_products_in_category(call):
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('prod_'))
 def show_product_details(call):
-    prod_key = call.data.split('_')[1]
+    # prod_ kalitidan so'ng kelgan barcha matnni to'liq ajratib olish
+    prod_key = call.data.replace('prod_', '', 1)
     lang = user_lang.get(call.message.chat.id, 'uz')
     
     if prod_key not in PRODUCTS:
@@ -205,7 +205,7 @@ def back_to_main_menu(call):
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('outofstock_'))
 def report_out_of_stock(call):
-    prod_key = call.data.split('_')[1]
+    prod_key = call.data.replace('outofstock_', '', 1)
     if prod_key not in PRODUCTS: return
     item = PRODUCTS[prod_key]
     user = call.from_user
@@ -322,7 +322,7 @@ def admin_show_products_by_cat(call):
 @bot.callback_query_handler(func=lambda call: call.data.startswith('adm_edit_'))
 def admin_choose_option(call):
     if call.message.chat.id != ADMIN_ID: return
-    prod_key = call.data.split('_')[2]
+    prod_key = call.data.replace('adm_edit_', '', 1)
     
     if prod_key not in PRODUCTS:
         render_admin_main(call)
@@ -343,13 +343,12 @@ def admin_choose_option(call):
 @bot.callback_query_handler(func=lambda call: call.data.startswith('deletep_'))
 def admin_delete_product(call):
     if call.message.chat.id != ADMIN_ID: return
-    prod_key = call.data.split('_')[1]
+    prod_key = call.data.replace('deletep_', '', 1)
     
     if prod_key in PRODUCTS:
         deleted_name = PRODUCTS[prod_key]['name_uz']
         cat = PRODUCTS[prod_key]['category']
         
-        # Bazadan ham, fayldan ham o'chirish
         del PRODUCTS[prod_key]
         save_products(PRODUCTS)
         
@@ -363,7 +362,13 @@ def admin_delete_product(call):
 @bot.callback_query_handler(func=lambda call: call.data.startswith(('changep_', 'changec_')))
 def admin_input_prompt(call):
     if call.message.chat.id != ADMIN_ID: return
-    action, prod_key = call.data.split('_')
+    
+    if call.data.startswith('changep_'):
+        action = 'changep'
+        prod_key = call.data.replace('changep_', '', 1)
+    else:
+        action = 'changec'
+        prod_key = call.data.replace('changec_', '', 1)
     
     if prod_key not in PRODUCTS:
         render_admin_main(call)
@@ -408,7 +413,7 @@ def update_count(message, prod_key):
         markup.add(types.InlineKeyboardButton("🏠 Admin menyusi", callback_data="admin_main"))
         bot.send_message(ADMIN_ID, f"✅ `{PRODUCTS[prod_key]['name_uz']}` soni **{int(message.text)} ta** deb yangilandi!", reply_markup=markup)
 
-# ADMIN - YANGI MAHSULOT QO'SHISH VA FAYLGA SAQLASH
+# ADMIN - YANGI MAHSULOT QO'SHISH
 @bot.callback_query_handler(func=lambda call: call.data == "admin_add_new")
 def admin_add_new_start(call):
     if call.message.chat.id != ADMIN_ID: return
@@ -466,7 +471,8 @@ def admin_add_finish(message):
     
     count = int(message.text)
     data = admin_temp_data[ADMIN_ID]
-    new_key = f"prod_{int(time.time())}"
+    # Kalit nomidan ortiqcha 'prod_' so'zi olib tashlandi
+    new_key = f"item_{int(time.time())}"
     
     PRODUCTS[new_key] = {
         "name_uz": data["name"],
@@ -502,14 +508,10 @@ def send_reply_to_user(message, target_user_id):
 
 # AVTO-RECONNECT 24/7
 def run_bot():
-    while True:
-        try:
-            bot.infinity_polling(timeout=20, long_polling_timeout=10, skip_pending=True)
-        except Exception as e:
-            time.sleep(3)
+    bot.infinity_polling(timeout=20, long_polling_timeout=10, skip_pending=True)
 
 if __name__ == "__main__":
-    t = threading.Thread(target=run_bot)
+    t = threading.Thread(target=run_bot, daemon=True)
     t.start()
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
