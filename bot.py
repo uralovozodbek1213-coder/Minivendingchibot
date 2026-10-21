@@ -2,6 +2,7 @@ import os
 import time
 import json
 import threading
+import html
 from flask import Flask
 import telebot
 from telebot import types
@@ -54,7 +55,6 @@ def home():
     return "Bot is running 24/7!"
 
 def set_bot_commands():
-    # Oddiy foydalanuvchilar menyusida faqat /start ko'rinadi
     commands = [
         types.BotCommand("start", "Botni qayta ishga tushirish / Restart bot 🔄")
     ]
@@ -90,7 +90,7 @@ def send_welcome(message):
     btn_en = types.InlineKeyboardButton("🇬🇧 English", callback_data="setlang_en")
     markup.add(btn_uz, btn_ru, btn_en)
     
-    user_name = message.from_user.first_name
+    user_name = html.escape(message.from_user.first_name or "")
     welcome_text = (
         f"Assalomu alaykum, hurmatli {user_name}! 😊\n"
         f"Bizning vending xizmatimiz botiga xush kelibsiz.\n\n"
@@ -225,25 +225,25 @@ def show_product_details(call):
 
     item = PRODUCTS[prod_key]
     if lang == 'ru':
-        name = item.get("name_ru", item["name_uz"])
-        text = f"📦 **Товар:** {name}\n💰 **Цена:** {item['price']:,} сум\n📊 **В наличии:** {item['count']} шт."
+        name = html.escape(item.get("name_ru", item["name_uz"]))
+        text = f"📦 <b>Товар:</b> {name}\n💰 <b>Цена:</b> {item['price']:,} сум\n📊 <b>В наличии:</b> {item['count']} шт."
         btn_out = types.InlineKeyboardButton("🚨 Сообщить: Товар закончился", callback_data=f"outofstock_{prod_key}")
         btn_back = types.InlineKeyboardButton("🔙 Назад к списку", callback_data=f"cat_{item['category']}")
     elif lang == 'en':
-        name = item.get("name_en", item["name_uz"])
-        text = f"📦 **Product:** {name}\n💰 **Price:** {item['price']:,} UZS\n📊 **In stock:** {item['count']} pcs"
+        name = html.escape(item.get("name_en", item["name_uz"]))
+        text = f"📦 <b>Product:</b> {name}\n💰 <b>Price:</b> {item['price']:,} UZS\n📊 <b>In stock:</b> {item['count']} pcs"
         btn_out = types.InlineKeyboardButton("🚨 Report: Out of stock", callback_data=f"outofstock_{prod_key}")
         btn_back = types.InlineKeyboardButton("🔙 Back to list", callback_data=f"cat_{item['category']}")
     else:
-        name = item["name_uz"]
-        text = f"📦 **Mahsulot:** {name}\n💰 **Narxi:** {item['price']:,} so'm\n📊 **Qurilmada mavjud:** {item['count']} ta"
+        name = html.escape(item["name_uz"])
+        text = f"📦 <b>Mahsulot:</b> {name}\n💰 <b>Narxi:</b> {item['price']:,} so'm\n📊 <b>Qurilmada mavjud:</b> {item['count']} ta"
         btn_out = types.InlineKeyboardButton("🚨 Mahsulot tugadi (Xabar berish)", callback_data=f"outofstock_{prod_key}")
         btn_back = types.InlineKeyboardButton("🔙 Ortga", callback_data=f"cat_{item['category']}")
         
     markup = types.InlineKeyboardMarkup(row_width=1)
     markup.add(btn_out, btn_back)
     
-    bot.edit_message_text(text, call.message.chat.id, call.message.message_id, parse_mode="Markdown", reply_markup=markup)
+    bot.edit_message_text(text, call.message.chat.id, call.message.message_id, parse_mode="HTML", reply_markup=markup)
 
 @bot.callback_query_handler(func=lambda call: call.data == "back_to_cats")
 def back_to_categories(call):
@@ -270,9 +270,9 @@ def start_report_out_of_stock(call):
     elif lang == 'en':
         msg_text = "📸 Please send a photo of the vending machine shelf confirming the product is out of stock:"
     else:
-        msg_text = "📸 Iltimos, mahsulot tugaganini tasdiqlash uchun apparatdagi o'sha joyning **rasmini yuboring**:"
+        msg_text = "📸 Iltimos, mahsulot tugaganini tasdiqlash uchun apparatdagi o'sha joyning <b>rasmini yuboring</b>:"
         
-    msg = bot.send_message(call.message.chat.id, msg_text, parse_mode="Markdown")
+    msg = bot.send_message(call.message.chat.id, msg_text, parse_mode="HTML")
     bot.register_next_step_handler(msg, process_out_of_stock_photo)
 
 def process_out_of_stock_photo(message):
@@ -291,39 +291,41 @@ def process_out_of_stock_photo(message):
         return
 
     item = PRODUCTS.get(prod_key, {})
-    prod_name = item.get('name_uz', 'Noma\'lum mahsulot')
+    prod_name = html.escape(item.get('name_uz', 'Noma\'lum mahsulot'))
     user = message.from_user
+    username = html.escape(user.username) if user.username else 'yoq'
+    first_name = html.escape(user.first_name or "")
     
     admin_alert = (
-        f"🚨 **DIQQAT! MAHSULOT TUGADI!**\n\n"
-        f"📌 **Tugagan mahsulot:** {prod_name}\n"
-        f"👤 **Mijoz:** @{user.username or 'yoq'} ({user.first_name})\n"
-        f"🆔 **Mijoz ID:** `{message.chat.id}`"
+        f"🚨 <b>DIQQAT! MAHSULOT TUGADI!</b>\n\n"
+        f"📌 <b>Tugagan mahsulot:</b> {prod_name}\n"
+        f"👤 <b>Mijoz:</b> @{username} ({first_name})\n"
+        f"🆔 <b>Mijoz ID:</b> <code>{message.chat.id}</code>"
     )
     
     photo_file_id = message.photo[-1].file_id
-    bot.send_photo(ADMIN_ID, photo_file_id, caption=admin_alert, parse_mode="Markdown")
+    bot.send_photo(ADMIN_ID, photo_file_id, caption=admin_alert, parse_mode="HTML")
     
     if lang == 'ru':
         thanks_text = (
-            "🌟 **Огромное спасибо!**\n\n"
+            "🌟 <b>Огромное спасибо!</b>\n\n"
             "Ваше сообщение и фотография успешно отправлены администратору. "
             "Мы быстро пополним автомат и исправим эту проблему! 🤝✨"
         )
     elif lang == 'en':
         thanks_text = (
-            "🌟 **Thank you very much!**\n\n"
+            "🌟 <b>Thank you very much!</b>\n\n"
             "Your report and photo have been successfully sent to the admin. "
             "We will refill the machine and resolve the issue shortly! 🤝✨"
         )
     else:
         thanks_text = (
-            "🌟 **Katta rahmat!**\n\n"
+            "🌟 <b>Katta rahmat!</b>\n\n"
             "Xabaringiz va rasmingiz adminga yetkazildi. "
             "Biz tez orada apparatni to'ldiramiz va kamchilikni bartaraf etamiz! 🤝✨"
         )
         
-    bot.send_message(message.chat.id, thanks_text, parse_mode="Markdown", reply_markup=get_main_keyboard(lang))
+    bot.send_message(message.chat.id, thanks_text, parse_mode="HTML", reply_markup=get_main_keyboard(lang))
 
 @bot.message_handler(func=lambda message: message.text in ["🌐 Tilni tanlash", "🌐 Сменить язык", "🌐 Change Language"])
 def change_language_menu(message):
@@ -345,27 +347,32 @@ def handle_suggestion_button(message):
 def process_suggestion(message):
     lang = user_lang.get(message.chat.id, 'uz')
     user = message.from_user
+    username = html.escape(user.username) if user.username else 'yoq'
+    first_name = html.escape(user.first_name or "")
+    
     markup = types.InlineKeyboardMarkup()
     markup.add(types.InlineKeyboardButton("💬 Javob berish", callback_data=f"reply_{message.chat.id}"))
     
-    user_info = f"💡 **YANGI TAKLIF!**\n\nKimdan: @{user.username or 'yoq'} ({user.first_name})\nID: `{message.chat.id}`"
+    user_info = f"💡 <b>YANGI TAKLIF!</b>\n\nKimdan: @{username} ({first_name})\nID: <code>{message.chat.id}</code>"
     
     if message.content_type == 'text':
-        bot.send_message(ADMIN_ID, f"{user_info}\n\nTaklif: {message.text}", parse_mode="Markdown", reply_markup=markup)
+        text_content = html.escape(message.text)
+        bot.send_message(ADMIN_ID, f"{user_info}\n\nTaklif: {text_content}", parse_mode="HTML", reply_markup=markup)
     elif message.content_type == 'photo':
-        bot.send_photo(ADMIN_ID, message.photo[-1].file_id, caption=f"{user_info}\n\nIzoh: {message.caption or ''}", parse_mode="Markdown", reply_markup=markup)
+        caption_text = html.escape(message.caption or '')
+        bot.send_photo(ADMIN_ID, message.photo[-1].file_id, caption=f"{user_info}\n\nIzoh: {caption_text}", parse_mode="HTML", reply_markup=markup)
     else:
         bot.send_message(message.chat.id, "❌ Iltimos, faqat matn yoki rasm yuboring.", reply_markup=get_main_keyboard(lang))
         return
 
     if lang == 'ru':
-        thanks = "🌟 **Большое спасибо!**\nВаше предложение успешно отправлено администратору. Оно обязательно будет учтено! 💡😊"
+        thanks = "🌟 <b>Большое спасибо!</b>\nВаше предложение успешно отправлено администратору. Оно обязательно будет учтено! 💡😊"
     elif lang == 'en':
-        thanks = "🌟 **Thank you very much!**\nYour suggestion has been sent to the admin. We will definitely consider it! 💡😊"
+        thanks = "🌟 <b>Thank you very much!</b>\nYour suggestion has been sent to the admin. We will definitely consider it! 💡😊"
     else:
-        thanks = "🌟 **Katta rahmat!**\nQimmatli taklifingiz adminga yetkazildi. Taklifingiz albatta inobatga olinadi va xizmatimizni yanada rivojlantirishga yordam beradi! 💡😊"
+        thanks = "🌟 <b>Katta rahmat!</b>\nQimmatli taklifingiz adminga yetkazildi. Taklifingiz albatta inobatga olinadi va xizmatimizni yanada rivojlantirishga yordam beradi! 💡😊"
         
-    bot.send_message(message.chat.id, thanks, parse_mode="Markdown", reply_markup=get_main_keyboard(lang))
+    bot.send_message(message.chat.id, thanks, parse_mode="HTML", reply_markup=get_main_keyboard(lang))
 
 # SHIKOYAT YUBORISH
 @bot.message_handler(func=lambda message: message.text in ["⚠️ Shikoyatim bor", "⚠️ Есть жалоба", "⚠️ Complaint"])
@@ -383,15 +390,20 @@ def handle_complaint_button(message):
 def process_complaint(message):
     lang = user_lang.get(message.chat.id, 'uz')
     user = message.from_user
+    username = html.escape(user.username) if user.username else 'yoq'
+    first_name = html.escape(user.first_name or "")
+    
     markup = types.InlineKeyboardMarkup()
     markup.add(types.InlineKeyboardButton("💬 Javob berish", callback_data=f"reply_{message.chat.id}"))
     
-    user_info = f"⚠️ **YANGI SHIKOYAT!**\n\nKimdan: @{user.username or 'yoq'} ({user.first_name})\nID: `{message.chat.id}`"
+    user_info = f"⚠️ <b>YANGI SHIKOYAT!</b>\n\nKimdan: @{username} ({first_name})\nID: <code>{message.chat.id}</code>"
     
     if message.content_type == 'text':
-        bot.send_message(ADMIN_ID, f"{user_info}\n\nShikoyat: {message.text}", parse_mode="Markdown", reply_markup=markup)
+        text_content = html.escape(message.text)
+        bot.send_message(ADMIN_ID, f"{user_info}\n\nShikoyat: {text_content}", parse_mode="HTML", reply_markup=markup)
     elif message.content_type == 'photo':
-        bot.send_photo(ADMIN_ID, message.photo[-1].file_id, caption=f"{user_info}\n\nIzoh: {message.caption or ''}", parse_mode="Markdown", reply_markup=markup)
+        caption_text = html.escape(message.caption or '')
+        bot.send_photo(ADMIN_ID, message.photo[-1].file_id, caption=f"{user_info}\n\nIzoh: {caption_text}", parse_mode="HTML", reply_markup=markup)
     else:
         bot.send_message(message.chat.id, "❌ Iltimos, faqat matn yoki rasm yuboring.", reply_markup=get_main_keyboard(lang))
         return
@@ -403,9 +415,9 @@ def process_complaint(message):
     else:
         thanks = "Yuzaga kelgan noqulaylik va xatolik uchun chin ko'ngildan uzr so'raymiz! 🙏 Shikoyatingiz adminga yetkazildi. Muammo albatta o'rganib chiqiladi, xatoni darhol to'g'rilaymiz va vaziyatni nazoratga olamiz."
         
-    bot.send_message(message.chat.id, thanks, parse_mode="Markdown", reply_markup=get_main_keyboard(lang))
+    bot.send_message(message.chat.id, thanks, parse_mode="HTML", reply_markup=get_main_keyboard(lang))
 
-# 3. ADMIN PANEL (Faqat ADMIN_ID uchun ishlaydi, /a olib tashlandi)
+# 3. ADMIN PANEL (Faqat ADMIN_ID uchun)
 @bot.message_handler(commands=['admin', 'setprice'])
 def admin_panel(message):
     if message.chat.id != ADMIN_ID:
@@ -419,9 +431,9 @@ def render_admin_main(call_or_msg):
         types.InlineKeyboardButton("➕ Yangi mahsulot qo'shish", callback_data="admin_add_new")
     )
     if hasattr(call_or_msg, 'message'):
-        bot.edit_message_text("🛠 **ADMIN PANEL**\n\nKerakli bo'limni tanlang:", call_or_msg.message.chat.id, call_or_msg.message.message_id, parse_mode="Markdown", reply_markup=markup)
+        bot.edit_message_text("🛠 <b>ADMIN PANEL</b>\n\nKerakli bo'limni tanlang:", call_or_msg.message.chat.id, call_or_msg.message.message_id, parse_mode="HTML", reply_markup=markup)
     else:
-        bot.send_message(ADMIN_ID, "🛠 **ADMIN PANEL**\n\nKerakli bo'limni tanlang:", parse_mode="Markdown", reply_markup=markup)
+        bot.send_message(ADMIN_ID, "🛠 <b>ADMIN PANEL</b>\n\nKerakli bo'limni tanlang:", parse_mode="HTML", reply_markup=markup)
 
 @bot.callback_query_handler(func=lambda call: call.data == "admin_main")
 def callback_admin_main(call):
@@ -461,7 +473,7 @@ def admin_show_products_by_cat(call):
         bot.edit_message_text("Ushbu bo'limda hozircha mahsulot yo'q.", call.message.chat.id, call.message.message_id, reply_markup=markup)
         return
         
-    bot.edit_message_text(f"📌 **{SUB_CATEGORIES.get(cat, 'Bo\'lim')}** mahsulotlari:\nTahrirlash yoki o'chirish uchun birini tanlang:", call.message.chat.id, call.message.message_id, parse_mode="Markdown", reply_markup=markup)
+    bot.edit_message_text(f"📌 <b>{SUB_CATEGORIES.get(cat, 'Bo\'lim')}</b> mahsulotlari:\nTahrirlash yoki o'chirish uchun birini tanlang:", call.message.chat.id, call.message.message_id, parse_mode="HTML", reply_markup=markup)
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('adm_edit_'))
 def admin_choose_option(call):
@@ -481,7 +493,8 @@ def admin_choose_option(call):
         types.InlineKeyboardButton("🔙 Ortga (Ro'yxatga)", callback_data=f"admeditcat_{item['category']}"),
         types.InlineKeyboardButton("🏠 Admin menyusi", callback_data="admin_main")
     )
-    bot.edit_message_text(f"📌 **{item['name_uz']}** bo'yicha amalni tanlang:", call.message.chat.id, call.message.message_id, parse_mode="Markdown", reply_markup=markup)
+    name = html.escape(item['name_uz'])
+    bot.edit_message_text(f"📌 <b>{name}</b> bo'yicha amalni tanlang:", call.message.chat.id, call.message.message_id, parse_mode="HTML", reply_markup=markup)
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('deletep_'))
 def admin_delete_product(call):
@@ -489,7 +502,7 @@ def admin_delete_product(call):
     prod_key = call.data.replace('deletep_', '', 1)
     
     if prod_key in PRODUCTS:
-        deleted_name = PRODUCTS[prod_key]['name_uz']
+        deleted_name = html.escape(PRODUCTS[prod_key]['name_uz'])
         cat = PRODUCTS[prod_key]['category']
         
         del PRODUCTS[prod_key]
@@ -498,7 +511,7 @@ def admin_delete_product(call):
         markup = types.InlineKeyboardMarkup(row_width=1)
         markup.add(types.InlineKeyboardButton("🔙 Ro'yxatga qaytish", callback_data=f"admeditcat_{cat}"))
         markup.add(types.InlineKeyboardButton("🏠 Admin menyusi", callback_data="admin_main"))
-        bot.edit_message_text(f"🗑 **{deleted_name}** butunlay o'chirib tashlandi!", call.message.chat.id, call.message.message_id, parse_mode="Markdown", reply_markup=markup)
+        bot.edit_message_text(f"🗑 <b>{deleted_name}</b> butunlay o'chirib tashlandi!", call.message.chat.id, call.message.message_id, parse_mode="HTML", reply_markup=markup)
     else:
         render_admin_main(call)
 
@@ -517,11 +530,12 @@ def admin_input_prompt(call):
         render_admin_main(call)
         return
 
+    name = html.escape(PRODUCTS[prod_key]['name_uz'])
     if action == 'changep':
-        msg = bot.send_message(ADMIN_ID, f"✍️ `{PRODUCTS[prod_key]['name_uz']}` uchun yangi **narxni** kiriting:\n\n*(Bekor qilish uchun **bekor** deb yozing)*", parse_mode="Markdown")
+        msg = bot.send_message(ADMIN_ID, f"✍️ <code>{name}</code> uchun yangi <b>narxni</b> kiriting:\n\n*(Bekor qilish uchun <b>bekor</b> deb yozing)*", parse_mode="HTML")
         bot.register_next_step_handler(msg, update_price, prod_key)
     elif action == 'changec':
-        msg = bot.send_message(ADMIN_ID, f"✍️ `{PRODUCTS[prod_key]['name_uz']}` uchun yangi **soni (dona)**ni kiriting:\n\n*(Bekor qilish uchun **bekor** deb yozing)*", parse_mode="Markdown")
+        msg = bot.send_message(ADMIN_ID, f"✍️ <code>{name}</code> uchun yangi <b>soni (dona)</b>ni kiriting:\n\n*(Bekor qilish uchun <b>bekor</b> deb yozing)*", parse_mode="HTML")
         bot.register_next_step_handler(msg, update_count, prod_key)
 
 def update_price(message, prod_key):
@@ -538,7 +552,8 @@ def update_price(message, prod_key):
         save_products(PRODUCTS)
         markup = types.InlineKeyboardMarkup(row_width=1)
         markup.add(types.InlineKeyboardButton("🏠 Admin menyusi", callback_data="admin_main"))
-        bot.send_message(ADMIN_ID, f"✅ `{PRODUCTS[prod_key]['name_uz']}` narxi **{int(message.text):,} so'm**ga o'zgartirildi!", parse_mode="Markdown", reply_markup=markup)
+        name = html.escape(PRODUCTS[prod_key]['name_uz'])
+        bot.send_message(ADMIN_ID, f"✅ <code>{name}</code> narxi <b>{int(message.text):,} so'm</b>ga o'zgartirildi!", parse_mode="HTML", reply_markup=markup)
 
 def update_count(message, prod_key):
     if message.text and message.text.lower() == 'bekor':
@@ -554,7 +569,8 @@ def update_count(message, prod_key):
         save_products(PRODUCTS)
         markup = types.InlineKeyboardMarkup(row_width=1)
         markup.add(types.InlineKeyboardButton("🏠 Admin menyusi", callback_data="admin_main"))
-        bot.send_message(ADMIN_ID, f"✅ `{PRODUCTS[prod_key]['name_uz']}` soni **{int(message.text)} ta** deb yangilandi!", parse_mode="Markdown", reply_markup=markup)
+        name = html.escape(PRODUCTS[prod_key]['name_uz'])
+        bot.send_message(ADMIN_ID, f"✅ <code>{name}</code> soni <b>{int(message.text)} ta</b> deb yangilandi!", parse_mode="HTML", reply_markup=markup)
 
 # ADMIN - YANGI MAHSULOT QO'SHISH
 @bot.callback_query_handler(func=lambda call: call.data == "admin_add_new")
@@ -577,7 +593,7 @@ def admin_add_get_category(call):
     cat = call.data.split('_')[1]
     admin_temp_data[ADMIN_ID] = {"category": cat}
     
-    msg = bot.send_message(ADMIN_ID, f"✍️ **{SUB_CATEGORIES.get(cat)}** uchun mahsulot nomini kiriting:\n\n*(Bekor qilish uchun **bekor** deb yozing)*", parse_mode="Markdown")
+    msg = bot.send_message(ADMIN_ID, f"✍️ <b>{SUB_CATEGORIES.get(cat)}</b> uchun mahsulot nomini kiriting:\n\n*(Bekor qilish uchun <b>bekor</b> deb yozing)*", parse_mode="HTML")
     bot.register_next_step_handler(msg, admin_add_get_name)
 
 def admin_add_get_name(message):
@@ -586,7 +602,8 @@ def admin_add_get_name(message):
         render_admin_main(message)
         return
     admin_temp_data[ADMIN_ID]["name"] = message.text
-    msg = bot.send_message(ADMIN_ID, f"✍️ `{message.text}` narxini kiriting (masalan: 9000):\n\n*(Bekor qilish uchun **bekor** deb yozing)*", parse_mode="Markdown")
+    name = html.escape(message.text)
+    msg = bot.send_message(ADMIN_ID, f"✍️ <code>{name}</code> narxini kiriting (masalan: 9000):\n\n*(Bekor qilish uchun <b>bekor</b> deb yozing)*", parse_mode="HTML")
     bot.register_next_step_handler(msg, admin_add_get_price)
 
 def admin_add_get_price(message):
@@ -599,7 +616,7 @@ def admin_add_get_price(message):
         render_admin_main(message)
         return
     admin_temp_data[ADMIN_ID]["price"] = int(message.text)
-    msg = bot.send_message(ADMIN_ID, "✍️ Apparatga nechta dona qo'ydingiz?\n\n*(Bekor qilish uchun **bekor** deb yozing)*", parse_mode="Markdown")
+    msg = bot.send_message(ADMIN_ID, "✍️ Apparatga nechta dona qo'ydingiz?\n\n*(Bekor qilish uchun <b>bekor</b> deb yozing)*", parse_mode="HTML")
     bot.register_next_step_handler(msg, admin_add_finish)
 
 def admin_add_finish(message):
@@ -630,22 +647,24 @@ def admin_add_finish(message):
     markup = types.InlineKeyboardMarkup(row_width=1)
     markup.add(types.InlineKeyboardButton("🏠 Admin menyusi", callback_data="admin_main"))
     
+    name = html.escape(data['name'])
     bot.send_message(
         ADMIN_ID, 
-        f"🎉 **Yangi mahsulot qo'shildi!**\n\n📌 Nomi: {data['name']}\n📂 Bo'lim: {SUB_CATEGORIES.get(data['category'])}\n💰 Narxi: {data['price']:,} so'm\n📊 Soni: {count} ta",
-        parse_mode="Markdown",
+        f"🎉 <b>Yangi mahsulot qo'shildi!</b>\n\n📌 Nomi: {name}\n📂 Bo'lim: {SUB_CATEGORIES.get(data['category'])}\n💰 Narxi: {data['price']:,} so'm\n📊 Soni: {count} ta",
+        parse_mode="HTML",
         reply_markup=markup
     )
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('reply_'))
 def ask_admin_reply(call):
     target_user_id = call.data.split('_')[1]
-    msg = bot.send_message(ADMIN_ID, f"✍️ Javobingizni yozing (ID: `{target_user_id}`):", parse_mode="Markdown")
+    msg = bot.send_message(ADMIN_ID, f"✍️ Javobingizni yozing (ID: <code>{target_user_id}</code>):", parse_mode="HTML")
     bot.register_next_step_handler(msg, send_reply_to_user, target_user_id)
 
 def send_reply_to_user(message, target_user_id):
     try:
-        bot.send_message(target_user_id, f"💬 **Ma'muriyatdan javob / Response from support:**\n\n{message.text}", parse_mode="Markdown")
+        reply_text = html.escape(message.text)
+        bot.send_message(target_user_id, f"💬 <b>Ma'muriyatdan javob / Response from support:</b>\n\n{reply_text}", parse_mode="HTML")
         bot.send_message(ADMIN_ID, "✅ Javob foydalanuvchiga yetkazildi!")
     except Exception as e:
         bot.send_message(ADMIN_ID, f"❌ Xatolik yuz berdi: {e}")
