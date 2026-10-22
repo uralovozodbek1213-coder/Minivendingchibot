@@ -62,11 +62,35 @@ def P(uz, ru, en, price, n, cat):
 
 def load():
     if not os.path.exists(DATA_FILE):
-        d = {"redbull": P("Red Bull 0.25L", "Red Bull 0.25Л", "Red Bull 0.25L", 18000, 10, "energy"),
-             "flash": P("Flash Up 0.45L", "Flash Up 0.45Л", "Flash Up 0.45L", 8000, 15, "energy"),
-             "pepsi": P("Pepsi 0.5L", "Пепси 0.5Л", "Pepsi 0.5L", 9000, 15, "carbonated"),
-             "snickers": P("Snickers", "Snickers", "Snickers", 10000, 8, "snack"),
-             "lays": P("Lays chipslari", "Чипсы Lays", "Lays Chips", 9000, 5, "snack")}
+        d = {
+            # Shirinliklar va Sneklar
+            "snikers_mini": P("Snikers mini", "Snikers mini", "Snickers mini", 7000, 10, "snack"),
+            "snikers_2": P("Snikers 2x", "Snikers 2x", "Snickers 2x", 12000, 10, "snack"),
+            "moon_kok": P("Moon (Ko'k)", "Moon (Синий)", "Moon (Blue)", 13000, 10, "snack"),
+            "moon_sariq": P("Moon (Sariq)", "Moon (Желтый)", "Moon (Yellow)", 12000, 10, "snack"),
+            "bruni_big": P("Bruni Big", "Bruni Big", "Bruni Big", 15000, 10, "snack"),
+            "bruni_dona": P("Bruni (Dona)", "Bruni (Шт)", "Bruni (Pcs)", 3000, 10, "snack"),
+            "ole_big": P("Ole Big", "Ole Big", "Ole Big", 13000, 10, "snack"),
+            "blum": P("Blum", "Blum", "Blum", 3000, 10, "snack"),
+            "bounty": P("Bounty", "Bounty", "Bounty", 5000, 10, "snack"),
+
+            # Gazlangan Ichimliklar
+            "coca_cola_05": P("Coca Cola 0.5L", "Coca Cola 0.5Л", "Coca Cola 0.5L", 8000, 10, "carbonated"),
+            "pepsi_05": P("Pepsi 0.5L", "Pepsi 0.5Л", "Pepsi 0.5L", 8000, 10, "carbonated"),
+            "fanta_05": P("Fanta 0.5L", "Fanta 0.5Л", "Fanta 0.5L", 8000, 10, "carbonated"),
+            "fanta_dyushes_05": P("Fanta Dyushes 0.5L", "Fanta Дюшес 0.5Л", "Fanta Dyushes 0.5L", 8000, 10, "carbonated"),
+            "sprite_05": P("Sprite 0.5L", "Sprite 0.5Л", "Sprite 0.5L", 8000, 10, "carbonated"),
+            "flavis_05": P("Flavis 0.5L", "Flavis 0.5Л", "Flavis 0.5L", 7000, 10, "carbonated"),
+            "mountain_dew_05": P("Mountain Dew 0.5L", "Mountain Dew 0.5Л", "Mountain Dew 0.5L", 7000, 10, "carbonated"),
+
+            # Gazlanmagan Ichimliklar
+            "ark_tea_05": P("Ark Tea 0.5L", "Ark Tea 0.5Л", "Ark Tea 0.5L", 7000, 10, "still"),
+            "lipton_05": P("Lipton 0.5L", "Lipton 0.5Л", "Lipton 0.5L", 8000, 10, "still"),
+            "fuse_tea_05": P("Fuse Tea 0.5L", "Fuse Tea 0.5Л", "Fuse Tea 0.5L", 8000, 10, "still"),
+            "ice_tea_05": P("Ice Tea 0.5L", "Ice Tea 0.5Л", "Ice Tea 0.5L", 6000, 10, "still"),
+            "gazlanmagan_suv_05": P("Gazlanmagan suv 0.5L", "Вода негазированная 0.5Л", "Still Water 0.5L", 3000, 10, "still"),
+            "mevali_suv_05": P("Gazlanmagan mevali suv 0.5L", "Вода фруктовая 0.5Л", "Fruit Still Water 0.5L", 4000, 10, "still")
+        }
         dump(d); return d
     try:
         with open(DATA_FILE, encoding="utf-8") as f: d = json.load(f)
