@@ -1,7 +1,13 @@
-import os, time, json, threading, html, sqlite3
+import os, time, json, threading, html, sqlite3, datetime
 from flask import Flask
 import telebot
 from telebot import types as T
+
+# PDF yaratish uchun ReportLab kutubxonalari
+from reportlab.lib.pagesizes import A4
+from reportlab.lib import colors
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 
 bot = telebot.TeleBot(os.environ.get("TOKEN", "8664579659:AAG5pvP_8_PO4iJr9RUZpBDfrYX1TLEL6ug"))
 ADMIN_ID = 8481771373
@@ -17,19 +23,22 @@ DRINKS = ("energy", "carbonated", "still")
 def init_db():
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
-    # Mahsulotlar jadvali
     c.execute('''CREATE TABLE IF NOT EXISTS products (
                     key TEXT PRIMARY KEY,
                     name_uz TEXT, name_ru TEXT, name_en TEXT,
                     price INTEGER, count INTEGER, start_count INTEGER,
                     added_today INTEGER, category TEXT)''')
-    # Foydalanuvchilar jadvali
     c.execute('''CREATE TABLE IF NOT EXISTS users (
                     user_id INTEGER PRIMARY KEY,
                     username TEXT, first_name TEXT, joined_at TEXT)''')
+    c.execute('''CREATE TABLE IF NOT EXISTS daily_sales_detail (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    date TEXT, prod_name TEXT, sold_count INTEGER, revenue INTEGER)''')
+    c.execute('''CREATE TABLE IF NOT EXISTS sales_history (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    date TEXT, total_items INTEGER, total_revenue INTEGER)''')
     conn.commit()
 
-    # Boshlang'ich mahsulotlarni yuklash (baza bo'sh bo'lsa)
     c.execute("SELECT COUNT(*) FROM products")
     if c.fetchone()[0] == 0:
         default_items = [
@@ -148,6 +157,55 @@ def bad(m, txt="Bekor qilindi."):
     if stop(m, txt): return True
     if not m.text or not m.text.isdigit(): snd("❌ Faqat raqam kiriting."); amain(); return True
 
+# ---------- PDF GENERATOR ----------
+def generate_pdf_report(start_date, end_date):
+    pdf_filename = f"Hisobot_{start_date}_dan_{end_date}_gacha.pdf"
+    doc = SimpleDocTemplate(pdf_filename, pagesize=A4, rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=30)
+    elements = []
+
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle('TitleStyle', parent=styles['Heading1'], fontSize=16, leading=20, alignment=1, textColor=colors.HexColor('#1A252C'))
+    normal_style = styles['Normal']
+
+    elements.append(Paragraph(f"<b>Vending Apparat Savdo Hisoboti</b>", title_style))
+    elements.append(Paragraph(f"<b>Davr:</b> {start_date} dan {end_date} gacha", normal_style))
+    elements.append(Spacer(1, 15))
+
+    rows = db_query("SELECT date, prod_name, sold_count, revenue FROM daily_sales_detail WHERE date >= ? AND date <= ? ORDER BY date ASC",
+                    (start_date, end_date), fetchall=True)
+
+    if not rows:
+        elements.append(Paragraph("<b>Ushbu kiritilgan davr bo'yicha hech qanday savdo ma'lumotlari topilmadi.</b>", normal_style))
+    else:
+        data = [["Sana", "Mahsulot Nomi", "Sotildi (ta)", "Tushum (so'm)"]]
+        total_qty = 0
+        total_rev = 0
+
+        for r in rows:
+            data.append([r[0], r[1], str(r[2]), f"{r[3]:,}"])
+            total_qty += r[2]
+            total_rev += r[3]
+
+        data.append(["JAMI", "-", str(total_qty), f"{total_rev:,}"])
+
+        t = Table(data, colWidths=[90, 220, 90, 120])
+        t.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#2C3E50')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('BOTTOMPADDING', (0, 0), (-1, 0), 8),
+            ('BACKGROUND', (0, 1), (-1, -2), colors.HexColor('#F2F4F4')),
+            ('GRID', (0, 0), (-1, -1), 1, colors.HexColor('#BDC3C7')),
+            ('BACKGROUND', (0, -1), (-1, -1), colors.HexColor('#27AE60')),
+            ('TEXTCOLOR', (0, -1), (-1, -1), colors.whitesmoke),
+            ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
+        ]))
+        elements.append(t)
+
+    doc.build(elements)
+    return pdf_filename
+
 # ---------- Mijoz ----------
 @bot.message_handler(commands=["start"])
 def start(m):
@@ -197,9 +255,12 @@ def oos_photo(m, key):
 
 # ---------- Admin funksiyalari ----------
 def amain(c=None):
-    kb = mk(("📊 Kunlik Savdo va Statistika", "dy"), ("📥 Apparatga Mahsulot Qo'shish (+)", "as"),
-            ("📢 Barcha Mijozlarga Xabar Yuborish", "bc"), ("🔄 Yangi Kun Boshlash", "rd"),
-            ("📝 Narx va Sonini O'zgartirish / O'chirish", "sc"), ("➕ Yangi Mahsulot Qo'shish (Baza)", "an"))
+    kb = mk(("📊 Hisobotlar (Kun / Haftalik / PDF)", "rep_menu"),
+            ("🏁 Kunni Yopish (Qoldiq sanab kiritish)", "end_day_start"),
+            ("📥 Apparatga Mahsulot Qo'shish (+)", "as"),
+            ("📢 Barcha Mijozlarga Xabar Yuborish", "bc"),
+            ("📝 Narx va Sonini O'zgartirish / O'chirish", "sc"),
+            ("➕ Yangi Mahsulot Qo'shish (Baza)", "an"))
     t = "🛠 <b>ADMIN PANEL</b>\n\nKerakli bo'limni tanlang:"
     if c: bot.edit_message_text(t, c.message.chat.id, c.message.message_id, parse_mode="HTML", reply_markup=kb)
     else: snd(t, kb)
@@ -208,33 +269,122 @@ def amain(c=None):
 def admin_cmd(m):
     if m.chat.id == ADMIN_ID: amain()
 
-def report():
-    """To'liq hisobot + Top-3 va jami mijozlar."""
+def show_report_menu(c):
+    kb = mk(("📊 Bugungi Real Savdo Hisoboti", "dy"),
+            ("📅 So'nggi 7 Kunlik Hisobot", "rep_week"),
+            ("🗓 So'nggi 30 Kunlik Hisobot", "rep_month"),
+            ("📄 Sanalar Bo'yicha PDF Hisobot Olish", "rep_pdf_start"),
+            ("🏠 Admin Menyusi", "am"))
+    bot.edit_message_text("📊 <b>Qaysi davr uchun hisobotni ko'rmoqchisiz?</b>", c.message.chat.id, c.message.message_id, parse_mode="HTML", reply_markup=kb)
+
+def get_today_report():
     prods = get_products_dict()
-    tot = qty = 0; rows = []; sales_list = []
-    
+    tot = qty = 0; rows = []
     for k, it in prods.items():
         sold = max(it["start_count"] + it["added_today"] - it["count"], 0)
         if sold > 0:
-            sales_list.append((it['name_uz'], sold, sold * it["price"]))
             qty += sold
             tot += sold * it["price"]
             rows.append(f"🔹 {html.escape(it['name_uz'])} — {sold} ta — {sold * it['price']:,} so'm")
-
-    # Jami foydalanuvchilar
-    u_count = db_query("SELECT COUNT(*) FROM users", fetchone=True)[0]
     
-    # TOP-3 mahsulotlar
-    sales_list.sort(key=lambda x: x[1], reverse=True)
-    top_3 = sales_list[:3]
-    top_text = "\n".join([f"🏆 {idx+1}. {item[0]} — <b>{item[1]} ta</b>" for idx, item in enumerate(top_3)]) if top_3 else "Hozircha sotuv yo'q."
-
-    body = "\n".join(rows) if rows else "Bugun hali savdo bo'lmagan."
-    return (f"📊 <b>BUGUNGI SAVDO HISOBOTI:</b>\n\n{body}\n\n"
-            f"🔥 <b>ENG KO'P SOTILGAN (TOP-3):</b>\n{top_text}\n\n"
+    body = "\n".join(rows) if rows else "Bugun hali savdo hisobi yopilmagan yoki sotuv bo'lmagan."
+    return (f"📊 <b>BUGUNGI REAL SAVDO HISOBOTI:</b>\n\n{body}\n\n"
             f"📦 <b>JAMI SOTILGAN TOVAR:</b> {qty} ta\n"
-            f"💰 <b>JAMI TUSHUM:</b> {tot:,} so'm\n"
-            f"👥 <b>JAMI BOT FOYDALANUVCHILARI:</b> {u_count} kishi")
+            f"💰 <b>JAMI TUSHUM:</b> {tot:,} so'm")
+
+def get_period_report(days):
+    today = datetime.date.today()
+    start_date = (today - datetime.timedelta(days=days)).strftime("%Y-%m-%d")
+    
+    rows = db_query("SELECT SUM(total_items), SUM(total_revenue) FROM sales_history WHERE date >= ?", (start_date,), fetchone=True)
+    qty = rows[0] or 0
+    tot = rows[1] or 0
+    
+    period_title = "7 KUNLIK" if days == 7 else "30 KUNLIK"
+    return f"📅 <b>SO'NGGI {period_title} SAVDO HISOBOTI:</b>\n\n📦 <b>Jami sotilgan tovar:</b> {qty} ta\n💰 <b>Jami tushum:</b> {tot:,} so'm"
+
+def start_pdf_request(c):
+    msg = bot.send_message(ADMIN_ID, "📅 <b>Boshlang'ich sanani</b> kiriting (Format: <code>YYYY-MM-DD</code>, masalan: <code>2026-10-03</code>):{BK}", parse_mode="HTML")
+    bot.register_next_step_handler(msg, get_pdf_start_date)
+
+def get_pdf_start_date(m):
+    if stop(m): return
+    s_date = m.text.strip()
+    tmp[ADMIN_ID] = {"pdf_start": s_date}
+    msg = bot.send_message(ADMIN_ID, "📅 <b>Tugash sanasini</b> kiriting (Format: <code>YYYY-MM-DD</code>, masalan: <code>2026-10-15</code>):{BK}", parse_mode="HTML")
+    bot.register_next_step_handler(msg, get_pdf_end_date)
+
+def get_pdf_end_date(m):
+    if stop(m): return
+    e_date = m.text.strip()
+    s_date = tmp[ADMIN_ID]["pdf_start"]
+    
+    msg_wait = bot.send_message(ADMIN_ID, "⏳ PDF hisobot tayyorlanmoqda, kuting...")
+    
+    try:
+        pdf_path = generate_pdf_report(s_date, e_date)
+        with open(pdf_path, 'rb') as pdf_file:
+            bot.send_document(ADMIN_ID, pdf_file, caption=f"📄 <b>{s_date}</b> dan <b>{e_date}</b> gacha bo'lgan savdo hisoboti.", parse_mode="HTML", reply_markup=HOME())
+        os.remove(pdf_path)
+        bot.delete_message(ADMIN_ID, msg_wait.message_id)
+    except Exception as ex:
+        bot.send_message(ADMIN_ID, f"❌ PDF yaratishda xatolik yuz berdi: {ex}", reply_markup=HOME())
+
+def start_end_day(c):
+    prods = get_products_dict()
+    keys = list(prods.keys())
+    tmp[ADMIN_ID] = {"keys": keys, "idx": 0, "sales_data": [], "tot_items": 0, "tot_rev": 0}
+    ask_next_product_count()
+
+def ask_next_product_count():
+    data = tmp.get(ADMIN_ID)
+    if not data or data["idx"] >= len(data["keys"]):
+        finish_end_day()
+        return
+
+    prods = get_products_dict()
+    key = data["keys"][data["idx"]]
+    it = prods[key]
+    ask(f"✍️ <code>{html.escape(it['name_uz'])}</code> apparatda bugun <b>nechta qoldi?</b>\n(Boshida: {it['start_count']} ta, Qo'shildi: {it['added_today']} ta):{BK}",
+        process_product_count_input, key)
+
+def process_product_count_input(m, key):
+    if bad(m, "Kunni yopish bekor qilindi."): return
+    current_count = int(m.text)
+    prods = get_products_dict()
+    it = prods[key]
+    
+    sold = max((it["start_count"] + it["added_today"]) - current_count, 0)
+    rev = sold * it["price"]
+    today_str = datetime.date.today().strftime("%Y-%m-%d")
+    
+    if sold > 0:
+        db_query("INSERT INTO daily_sales_detail (date, prod_name, sold_count, revenue) VALUES (?,?,?,?)",
+                 (today_str, it['name_uz'], sold, rev), commit=True)
+
+    db_query("UPDATE products SET count = ? WHERE key = ?", (current_count, key), commit=True)
+    
+    data = tmp[ADMIN_ID]
+    data["tot_items"] += sold
+    data["tot_rev"] += rev
+    data["idx"] += 1
+    
+    ask_next_product_count()
+
+def finish_end_day():
+    data = tmp.pop(ADMIN_ID, None)
+    if not data: return
+    
+    today_str = datetime.date.today().strftime("%Y-%m-%d")
+    db_query("INSERT INTO sales_history (date, total_items, total_revenue) VALUES (?,?,?)",
+             (today_str, data["tot_items"], data["tot_rev"]), commit=True)
+    
+    db_query("UPDATE products SET start_count = count, added_today = 0", commit=True)
+    
+    snd(f"🎉 <b>KUN MUVAFFAQIYATLI YOPILDI!</b>\n\n"
+        f"📊 Bugun sotildi: <b>{data['tot_items']} ta</b> tovar\n"
+        f"💰 Bugungi tushum: <b>{data['tot_rev']:,} so'm</b>\n\n"
+        f"✅ Qoldiqlar yangilandi va ertangi kun uchun saqlandi!", HOME())
 
 def broadcast_send(m):
     if stop(m, "Xabar yuborish bekor qilindi."): return
@@ -244,9 +394,8 @@ def broadcast_send(m):
         try:
             bot.copy_message(u[0], m.chat.id, m.message_id)
             count += 1
-            time.sleep(0.05) # Telegram limitidan oshmaslik uchun
-        except Exception:
-            pass
+            time.sleep(0.05)
+        except Exception: pass
     snd(f"✅ Xabar <b>{count} ta</b> foydalanuvchiga muvaffaqiyatli yuborildi!", HOME())
 
 def add_stock(m, k):
@@ -290,7 +439,7 @@ def reply_user(m, uid):
     except Exception as e: snd(f"❌ Xatolik yuz berdi: {html.escape(str(e))}")
 
 # ---------- Callback Handler ----------
-ADM = {"ok", "no", "am", "dy", "as", "sk", "ak", "rd", "sc", "ec", "ee", "dp", "cp", "cc", "an", "ac", "rp", "bc"}
+ADM = {"ok", "no", "am", "dy", "as", "sk", "ak", "sc", "ec", "ee", "dp", "cp", "cc", "an", "ac", "rp", "bc", "rep_menu", "rep_week", "rep_month", "end_day_start", "rep_pdf_start"}
 
 @bot.callback_query_handler(func=lambda c: True)
 def cb(c):
@@ -302,7 +451,7 @@ def cb(c):
     prods = get_products_dict()
 
     if a in ADM and cid != ADMIN_ID: return
-    if a not in ("pd", "ok", "no", "rd"): ans()
+    if a not in ("pd", "ok", "no"): ans()
 
     # --- Mijoz ---
     if a == "sl":
@@ -325,25 +474,15 @@ def cb(c):
     elif a == "os":
         if k in prods: bot.register_next_step_handler(bot.send_message(cid, X["oos"][i], parse_mode="HTML"), oos_photo, k)
 
-    # --- Admin: Tasdiqlash / Broadcast / Hisobot ---
-    elif a in ("ok", "no"):
-        it = prods.get(k); pn = html.escape(it["name_uz"]) if it else "Mahsulot"
-        if a == "ok":
-            db_query("UPDATE products SET count = 0 WHERE key = ?", (k,), commit=True)
-            cap, al = "\n\n<b>✅ ADMIN TAROFIDAN TASDIQLANDI!</b> Soni 0 ga tushirildi.", "✅ Mahsulot soni 0 deb saqlandi!"
-        else: cap, al = "\n\n<b>❌ RAD ETILDI.</b> Mahsulot soni o'zgartirilmadi.", "❌ So'rov rad etildi."
-        bot.edit_message_caption(c.message.html_caption + cap, cid, mid, parse_mode="HTML")
-        ans(al)
-        if a == "ok":
-            try: bot.send_message(d[1], f"✅ <b>{pn}</b> bo'yicha yuborgan xabaringiz admin tomonidan tasdiqlandi. Rahmat!", parse_mode="HTML")
-            except Exception: pass
-
+    # --- Admin: Hisobotlar va Kunni yopish ---
     elif a == "am": amain(c)
-    elif a == "dy": ed(report(), HOME("🏠 Admin Menyusi"))
+    elif a == "rep_menu": show_report_menu(c)
+    elif a == "dy": ed(get_today_report(), HOME("🏠 Admin Menyusi"))
+    elif a == "rep_week": ed(get_period_report(7), HOME("🏠 Admin Menyusi"))
+    elif a == "rep_month": ed(get_period_report(30), HOME("🏠 Admin Menyusi"))
+    elif a == "rep_pdf_start": start_pdf_request(c)
+    elif a == "end_day_start": start_end_day(c)
     elif a == "bc": ask(f"📢 Barcha foydalanuvchilarga yuboriladigan e'lon/matn/rasmni yuboring:{BK}", broadcast_send)
-    elif a == "rd":
-        db_query("UPDATE products SET start_count = count, added_today = 0", commit=True)
-        ans("✅ Yangi kun boshlandi! Kunlik ko'rsatkichlar nolga tushirildi."); amain(c)
 
     # --- Admin: Boshqaruv ---
     elif a in ("as", "sc"):
@@ -391,7 +530,7 @@ def cb(c):
 app = Flask(__name__)
 
 @app.route("/")
-def home(): return "Bot is running 24/7 with SQLite!"
+def home(): return "Bot is running 24/7 with PDF Report feature!"
 
 def run_bot():
     try: bot.set_my_commands([T.BotCommand("start", "Botni qayta ishga tushirish / Restart bot 🔄")])
