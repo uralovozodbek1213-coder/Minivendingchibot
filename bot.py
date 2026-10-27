@@ -10,7 +10,12 @@ from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, Tabl
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 
 bot = telebot.TeleBot(os.environ.get("TOKEN", "8664579659:AAG5pvP_8_PO4iJr9RUZpBDfrYX1TLEL6ug"))
-ADMIN_ID = 8481771373
+
+# ---------- Admin Sozlamalari ----------
+ADMIN_IDS = [8481771373]  # Asosiy admin(lar) ID si
+ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "admin123")  # Admin panelga kirish paroli
+AUTHORIZED_ADMINS = set(ADMIN_IDS)  # Parol orqali kirgan adminlar saqlanadi
+
 LI = {"uz": 0, "ru": 1, "en": 2}
 user_lang, tmp = {}, {}
 DB_FILE = "vending.db"
@@ -134,8 +139,13 @@ def mk(*rows, w=1):
     return m
 
 def nm(it, l="uz"): return it.get(f"name_{l}", it["name_uz"])
-def snd(text, kb=None): return bot.send_message(ADMIN_ID, text, parse_mode="HTML", reply_markup=kb)
-def ask(text, fn, *a): bot.register_next_step_handler(snd(text), fn, *a)
+def snd(cid, text, kb=None): return bot.send_message(cid, text, parse_mode="HTML", reply_markup=kb)
+def snd_all_admins(text, kb=None):
+    for aid in AUTHORIZED_ADMINS:
+        try: bot.send_message(aid, text, parse_mode="HTML", reply_markup=kb)
+        except: pass
+
+def ask(cid, text, fn, *a): bot.register_next_step_handler(snd(cid, text), fn, *a)
 def HOME(t="🏠 Admin menyusi"): return mk((t, "am"))
 def kbd(l):
     k = T.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2); k.add(*X["kb"][LI[l]]); return k
@@ -145,17 +155,17 @@ def cats_kb(l):
     return mk((X["snack"][i], "ct:snack"), (X["drinks"][i], "dk"), (X["main"][i], "bm"))
 
 def cat_kb(prefix, snack):
-    return mk(*[(snack if k == "snack" else v, f"{prefix}:{k}") for k, v in CATS.items()], ("🏠 Admin menyusi", "am"))
+    return mk(*[(snack if k == "snack" else v, f"{prefix}:{k}") for k, v in CATS.items()], ("🔙 Ortga", "am"), ("🏠 Admin menyusi", "am"))
 
-def main_kb(p, home): return mk(("🍫 Snek va shirinliklar", f"{p}:snack"), ("🥤 Ichimliklar", f"{p}:drinks"), (home, "am"))
+def main_kb(p, home): return mk(("🍫 Snek va shirinliklar", f"{p}:snack"), ("🥤 Ichimliklar", f"{p}:drinks"), ("🔙 Ortga", "am"), (home, "am"))
 def sub_kb(p, back, home): return mk(*[(CATS[x], f"{p}:{x}") for x in DRINKS], ("🔙 Ortga", back), (home, "am"))
 
 def stop(m, txt="Bekor qilindi."):
-    if m.text and m.text.lower() == "bekor": snd(txt); amain(); return True
+    if m.text and m.text.lower() == "bekor": snd(m.chat.id, txt); amain(cid=m.chat.id); return True
 
 def bad(m, txt="Bekor qilindi."):
     if stop(m, txt): return True
-    if not m.text or not m.text.isdigit(): snd("❌ Faqat raqam kiriting."); amain(); return True
+    if not m.text or not m.text.isdigit(): snd(m.chat.id, "❌ Faqat raqam kiriting."); amain(cid=m.chat.id); return True
 
 # ---------- PDF GENERATOR ----------
 def generate_pdf_report(start_date, end_date):
@@ -233,9 +243,11 @@ def feedback(m, is_s):
     title = "💡 <b>YANGI TAKLIF!</b>" if is_s else "⚠️ <b>YANGI SHIKOYAT!</b>"
     info = f"{title}\n\nKimdan: @{html.escape(u.username) if u.username else 'yoq'} ({html.escape(u.first_name or '')})\nID: <code>{cid}</code>"
     kb = mk(("💬 Javob berish", f"rp:{cid}"))
-    if m.content_type == "text": snd(f"{info}\n\nMatn: {html.escape(m.text)}", kb)
+    if m.content_type == "text": snd_all_admins(f"{info}\n\nMatn: {html.escape(m.text)}", kb)
     elif m.content_type == "photo":
-        bot.send_photo(ADMIN_ID, m.photo[-1].file_id, caption=f"{info}\n\nIzoh: {html.escape(m.caption or '')}", parse_mode="HTML", reply_markup=kb)
+        for aid in AUTHORIZED_ADMINS:
+            try: bot.send_photo(aid, m.photo[-1].file_id, caption=f"{info}\n\nIzoh: {html.escape(m.caption or '')}", parse_mode="HTML", reply_markup=kb)
+            except: pass
     else: return bot.send_message(cid, "❌ Iltimos, faqat matn yoki rasm yuboring.", reply_markup=kbd(l))
     bot.send_message(cid, "🌟 Katta rahmat! Murojaatingiz adminga yetkazildi. 😊", parse_mode="HTML", reply_markup=kbd(l))
 
@@ -249,12 +261,39 @@ def oos_photo(m, key):
     alert = (f"🚨 <b>DIQQAT! MAHSULOT TUGAGANI HAQIDA MUROJAAT!</b>\n\n📌 <b>Mahsulot:</b> {pn}\n"
              f"👤 <b>Mijoz:</b> @{html.escape(u.username) if u.username else 'yoq'} ({html.escape(u.first_name or '')})\n"
              f"🆔 <b>Mijoz ID:</b> <code>{cid}</code>\n\n<i>Mahsulot sonini 0 ga tushirishni tasdiqlaysizmi?</i>")
-    bot.send_photo(ADMIN_ID, m.photo[-1].file_id, caption=alert, parse_mode="HTML",
-                   reply_markup=mk(("✅ Tasdiqlash (Soni -> 0)", f"ok:{key}:{cid}"), ("❌ Rad etish", f"no:{key}:{cid}"), w=2))
+    
+    for aid in AUTHORIZED_ADMINS:
+        try:
+            bot.send_photo(aid, m.photo[-1].file_id, caption=alert, parse_mode="HTML",
+                           reply_markup=mk(("✅ Tasdiqlash (Soni -> 0)", f"ok:{key}:{cid}"), ("❌ Rad etish", f"no:{key}:{cid}"), w=2))
+        except: pass
     bot.send_message(cid, X["thx"][i], parse_mode="HTML", reply_markup=kbd(l))
 
+# ---------- Admin Parol va Kirish Tizimi ----------
+@bot.message_handler(commands=["admin", "setprice"])
+def admin_cmd(m):
+    cid = m.chat.id
+    if cid in AUTHORIZED_ADMINS:
+        amain(cid=cid)
+    else:
+        msg = bot.send_message(cid, f"🔒 <b>Admin panelga kirish uchun parolni kiriting:</b>{BK}", parse_mode="HTML")
+        bot.register_next_step_handler(msg, check_admin_password)
+
+def check_admin_password(m):
+    cid = m.chat.id
+    if m.text and m.text.lower() == "bekor":
+        snd(cid, "Bekor qilindi.")
+        return
+    if m.text == ADMIN_PASSWORD:
+        AUTHORIZED_ADMINS.add(cid)
+        snd(cid, "✅ Parol to'g'ri! Admin panelliga xush kelibsiz.")
+        amain(cid=cid)
+    else:
+        snd(cid, "❌ Parol noto'g'ri! Kirish rad etildi.")
+
 # ---------- Admin funksiyalari ----------
-def amain(c=None):
+def amain(c=None, cid=None):
+    chat_id = cid or c.message.chat.id
     kb = mk(("📊 Hisobotlar (Kun / Haftalik / PDF)", "rep_menu"),
             ("🏁 Kunni Yopish (Qoldiq sanab kiritish)", "end_day_start"),
             ("📥 Apparatga Mahsulot Qo'shish (+)", "as"),
@@ -262,18 +301,15 @@ def amain(c=None):
             ("📝 Narx va Sonini O'zgartirish / O'chirish", "sc"),
             ("➕ Yangi Mahsulot Qo'shish (Baza)", "an"))
     t = "🛠 <b>ADMIN PANEL</b>\n\nKerakli bo'limni tanlang:"
-    if c: bot.edit_message_text(t, c.message.chat.id, c.message.message_id, parse_mode="HTML", reply_markup=kb)
-    else: snd(t, kb)
-
-@bot.message_handler(commands=["admin", "setprice"])
-def admin_cmd(m):
-    if m.chat.id == ADMIN_ID: amain()
+    if c: bot.edit_message_text(t, chat_id, c.message.message_id, parse_mode="HTML", reply_markup=kb)
+    else: snd(chat_id, t, kb)
 
 def show_report_menu(c):
     kb = mk(("📊 Bugungi Real Savdo Hisoboti", "dy"),
             ("📅 So'nggi 7 Kunlik Hisobot", "rep_week"),
             ("🗓 So'nggi 30 Kunlik Hisobot", "rep_month"),
             ("📄 Sanalar Bo'yicha PDF Hisobot Olish", "rep_pdf_start"),
+            ("🔙 Ortga", "am"),
             ("🏠 Admin Menyusi", "am"))
     bot.edit_message_text("📊 <b>Qaysi davr uchun hisobotni ko'rmoqchisiz?</b>", c.message.chat.id, c.message.message_id, parse_mode="HTML", reply_markup=kb)
 
@@ -304,51 +340,56 @@ def get_period_report(days):
     return f"📅 <b>SO'NGGI {period_title} SAVDO HISOBOTI:</b>\n\n📦 <b>Jami sotilgan tovar:</b> {qty} ta\n💰 <b>Jami tushum:</b> {tot:,} so'm"
 
 def start_pdf_request(c):
-    msg = bot.send_message(ADMIN_ID, "📅 <b>Boshlang'ich sanani</b> kiriting (Format: <code>YYYY-MM-DD</code>, masalan: <code>2026-10-03</code>):{BK}", parse_mode="HTML")
+    cid = c.message.chat.id
+    msg = bot.send_message(cid, f"📅 <b>Boshlang'ich sanani</b> kiriting (Format: <code>YYYY-MM-DD</code>, masalan: <code>2026-10-03</code>):{BK}", parse_mode="HTML")
     bot.register_next_step_handler(msg, get_pdf_start_date)
 
 def get_pdf_start_date(m):
+    cid = m.chat.id
     if stop(m): return
     s_date = m.text.strip()
-    tmp[ADMIN_ID] = {"pdf_start": s_date}
-    msg = bot.send_message(ADMIN_ID, "📅 <b>Tugash sanasini</b> kiriting (Format: <code>YYYY-MM-DD</code>, masalan: <code>2026-10-15</code>):{BK}", parse_mode="HTML")
+    tmp[cid] = {"pdf_start": s_date}
+    msg = bot.send_message(cid, f"📅 <b>Tugash sanasini</b> kiriting (Format: <code>YYYY-MM-DD</code>, masalan: <code>2026-10-15</code>):{BK}", parse_mode="HTML")
     bot.register_next_step_handler(msg, get_pdf_end_date)
 
 def get_pdf_end_date(m):
+    cid = m.chat.id
     if stop(m): return
     e_date = m.text.strip()
-    s_date = tmp[ADMIN_ID]["pdf_start"]
+    s_date = tmp[cid]["pdf_start"]
     
-    msg_wait = bot.send_message(ADMIN_ID, "⏳ PDF hisobot tayyorlanmoqda, kuting...")
+    msg_wait = bot.send_message(cid, "⏳ PDF hisobot tayyorlanmoqda, kuting...")
     
     try:
         pdf_path = generate_pdf_report(s_date, e_date)
         with open(pdf_path, 'rb') as pdf_file:
-            bot.send_document(ADMIN_ID, pdf_file, caption=f"📄 <b>{s_date}</b> dan <b>{e_date}</b> gacha bo'lgan savdo hisoboti.", parse_mode="HTML", reply_markup=HOME())
+            bot.send_document(cid, pdf_file, caption=f"📄 <b>{s_date}</b> dan <b>{e_date}</b> gacha bo'lgan savdo hisoboti.", parse_mode="HTML", reply_markup=HOME())
         os.remove(pdf_path)
-        bot.delete_message(ADMIN_ID, msg_wait.message_id)
+        bot.delete_message(cid, msg_wait.message_id)
     except Exception as ex:
-        bot.send_message(ADMIN_ID, f"❌ PDF yaratishda xatolik yuz berdi: {ex}", reply_markup=HOME())
+        bot.send_message(cid, f"❌ PDF yaratishda xatolik yuz berdi: {ex}", reply_markup=HOME())
 
 def start_end_day(c):
+    cid = c.message.chat.id
     prods = get_products_dict()
     keys = list(prods.keys())
-    tmp[ADMIN_ID] = {"keys": keys, "idx": 0, "sales_data": [], "tot_items": 0, "tot_rev": 0}
-    ask_next_product_count()
+    tmp[cid] = {"keys": keys, "idx": 0, "sales_data": [], "tot_items": 0, "tot_rev": 0}
+    ask_next_product_count(cid)
 
-def ask_next_product_count():
-    data = tmp.get(ADMIN_ID)
+def ask_next_product_count(cid):
+    data = tmp.get(cid)
     if not data or data["idx"] >= len(data["keys"]):
-        finish_end_day()
+        finish_end_day(cid)
         return
 
     prods = get_products_dict()
     key = data["keys"][data["idx"]]
     it = prods[key]
-    ask(f"✍️ <code>{html.escape(it['name_uz'])}</code> apparatda bugun <b>nechta qoldi?</b>\n(Boshida: {it['start_count']} ta, Qo'shildi: {it['added_today']} ta):{BK}",
+    ask(cid, f"✍️ <code>{html.escape(it['name_uz'])}</code> apparatda bugun <b>nechta qoldi?</b>\n(Boshida: {it['start_count']} ta, Qo'shildi: {it['added_today']} ta):{BK}",
         process_product_count_input, key)
 
 def process_product_count_input(m, key):
+    cid = m.chat.id
     if bad(m, "Kunni yopish bekor qilindi."): return
     current_count = int(m.text)
     prods = get_products_dict()
@@ -364,15 +405,15 @@ def process_product_count_input(m, key):
 
     db_query("UPDATE products SET count = ? WHERE key = ?", (current_count, key), commit=True)
     
-    data = tmp[ADMIN_ID]
+    data = tmp[cid]
     data["tot_items"] += sold
     data["tot_rev"] += rev
     data["idx"] += 1
     
-    ask_next_product_count()
+    ask_next_product_count(cid)
 
-def finish_end_day():
-    data = tmp.pop(ADMIN_ID, None)
+def finish_end_day(cid):
+    data = tmp.pop(cid, None)
     if not data: return
     
     today_str = datetime.date.today().strftime("%Y-%m-%d")
@@ -381,62 +422,71 @@ def finish_end_day():
     
     db_query("UPDATE products SET start_count = count, added_today = 0", commit=True)
     
-    snd(f"🎉 <b>KUN MUVAFFAQIYATLI YOPILDI!</b>\n\n"
-        f"📊 Bugun sotildi: <b>{data['tot_items']} ta</b> tovar\n"
-        f"💰 Bugungi tushum: <b>{data['tot_rev']:,} so'm</b>\n\n"
-        f"✅ Qoldiqlar yangilandi va ertangi kun uchun saqlandi!", HOME())
+    snd(cid, f"🎉 <b>KUN MUVAFFAQIYATLI YOPILDI!</b>\n\n"
+             f"📊 Bugun sotildi: <b>{data['tot_items']} ta</b> tovar\n"
+             f"💰 Bugungi tushum: <b>{data['tot_rev']:,} so'm</b>\n\n"
+             f"✅ Qoldiqlar yangilandi va ertangi kun uchun saqlandi!", HOME())
 
 def broadcast_send(m):
+    cid = m.chat.id
     if stop(m, "Xabar yuborish bekor qilindi."): return
     users = db_query("SELECT user_id FROM users", fetchall=True)
     count = 0
     for u in users:
         try:
-            bot.copy_message(u[0], m.chat.id, m.message_id)
+            bot.copy_message(u[0], cid, m.message_id)
             count += 1
             time.sleep(0.05)
         except Exception: pass
-    snd(f"✅ Xabar <b>{count} ta</b> foydalanuvchiga muvaffaqiyatli yuborildi!", HOME())
+    snd(cid, f"✅ Xabar <b>{count} ta</b> foydalanuvchiga muvaffaqiyatli yuborildi!", HOME())
 
 def add_stock(m, k):
+    cid = m.chat.id
     if bad(m): return
     n = int(m.text)
     db_query("UPDATE products SET count = count + ?, added_today = added_today + ? WHERE key = ?", (n, n, k), commit=True)
     row = db_query("SELECT name_uz, count FROM products WHERE key = ?", (k,), fetchone=True)
-    snd(f"✅ <code>{html.escape(row[0])}</code> ga +{n} ta qo'shildi! Hozirgi qoldiq: {row[1]} ta"); amain()
+    snd(cid, f"✅ <code>{html.escape(row[0])}</code> ga +{n} ta qo'shildi! Hozirgi qoldiq: {row[1]} ta"); amain(cid=cid)
 
 def upd(m, k, f):
+    cid = m.chat.id
     if bad(m, "Amal bekor qilindi."): return
     val = int(m.text)
     db_query(f"UPDATE products SET {f} = ? WHERE key = ?", (val, k), commit=True)
     row = db_query("SELECT name_uz FROM products WHERE key = ?", (k,), fetchone=True)
     n = html.escape(row[0])
-    snd(f"✅ <code>{n}</code> narxi <b>{val:,} so'm</b>ga o'zgartirildi!" if f == "price"
+    snd(cid, f"✅ <code>{n}</code> narxi <b>{val:,} so'm</b>ga o'zgartirildi!" if f == "price"
         else f"✅ <code>{n}</code> soni <b>{val} ta</b> deb yangilandi!", HOME())
 
 def add_name(m):
+    cid = m.chat.id
     if stop(m): return
-    if not m.text: return amain()
-    tmp["name"] = m.text
-    ask(f"✍️ <code>{html.escape(m.text)}</code> narxini kiriting (masalan: 9000):{BK}", add_price)
+    if not m.text: return amain(cid=cid)
+    tmp[cid] = tmp.get(cid, {})
+    tmp[cid]["name"] = m.text
+    ask(cid, f"✍️ <code>{html.escape(m.text)}</code> narxini kiriting (masalan: 9000):{BK}", add_price)
 
 def add_price(m):
+    cid = m.chat.id
     if bad(m): return
-    tmp["price"] = int(m.text); ask(f"✍️ Apparatga nechta dona qo'ydingiz?{BK}", add_done)
+    tmp[cid]["price"] = int(m.text)
+    ask(cid, f"✍️ Apparatga nechta dona qo'ydingiz?{BK}", add_done)
 
 def add_done(m):
+    cid = m.chat.id
     if bad(m): return
-    n = int(m.text); nme = tmp["name"]; key = f"item_{int(time.time())}"
+    n = int(m.text); nme = tmp[cid]["name"]; key = f"item_{int(time.time())}"
     db_query("INSERT INTO products VALUES (?,?,?,?,?,?,?,?,?)",
-             (key, nme, nme, nme, tmp["price"], n, n, 0, tmp["category"]), commit=True)
-    snd(f"🎉 <b>Yangi mahsulot qo'shildi!</b>\n\n📌 Nomi: {html.escape(nme)}\n📂 Bo'lim: {CATS[tmp['category']]}\n"
-        f"💰 Narxi: {tmp['price']:,} so'm\n📊 Soni: {n} ta", HOME())
+             (key, nme, nme, nme, tmp[cid]["price"], n, n, 0, tmp[cid]["category"]), commit=True)
+    snd(cid, f"🎉 <b>Yangi mahsulot qo'shildi!</b>\n\n📌 Nomi: {html.escape(nme)}\n📂 Bo'lim: {CATS[tmp[cid]['category']]}\n"
+             f"💰 Narxi: {tmp[cid]['price']:,} so'm\n📊 Soni: {n} ta", HOME())
 
 def reply_user(m, uid):
+    cid = m.chat.id
     try:
         bot.send_message(uid, f"💬 <b>Ma'muriyatdan javob / Response from support:</b>\n\n{html.escape(m.text)}", parse_mode="HTML")
-        snd("✅ Javob foydalanuvchiga yetkazildi!")
-    except Exception as e: snd(f"❌ Xatolik yuz berdi: {html.escape(str(e))}")
+        snd(cid, "✅ Javob foydalanuvchiga yetkazildi!")
+    except Exception as e: snd(cid, f"❌ Xatolik yuz berdi: {html.escape(str(e))}")
 
 # ---------- Callback Handler ----------
 ADM = {"ok", "no", "am", "dy", "as", "sk", "ak", "sc", "ec", "ee", "dp", "cp", "cc", "an", "ac", "rp", "bc", "rep_menu", "rep_week", "rep_month", "end_day_start", "rep_pdf_start"}
@@ -450,7 +500,10 @@ def cb(c):
     ed = lambda t, kb=None: bot.edit_message_text(t, cid, mid, parse_mode="HTML", reply_markup=kb)
     prods = get_products_dict()
 
-    if a in ADM and cid != ADMIN_ID: return
+    if a in ADM and cid not in AUTHORIZED_ADMINS:
+        ans("❌ Ushbu bo'lim faqat adminlar uchun!")
+        return
+
     if a not in ("pd", "ok", "no"): ans()
 
     # --- Mijoz ---
@@ -474,15 +527,15 @@ def cb(c):
     elif a == "os":
         if k in prods: bot.register_next_step_handler(bot.send_message(cid, X["oos"][i], parse_mode="HTML"), oos_photo, k)
 
-    # --- Admin: Hisobotlar va Kunni yopish ---
+    # --- Admin: Ortga qaytish xabar va harakatlari ---
     elif a == "am": amain(c)
     elif a == "rep_menu": show_report_menu(c)
-    elif a == "dy": ed(get_today_report(), HOME("🏠 Admin Menyusi"))
-    elif a == "rep_week": ed(get_period_report(7), HOME("🏠 Admin Menyusi"))
-    elif a == "rep_month": ed(get_period_report(30), HOME("🏠 Admin Menyusi"))
+    elif a == "dy": ed(get_today_report(), mk(("🔙 Ortga", "rep_menu"), ("🏠 Admin Menyusi", "am")))
+    elif a == "rep_week": ed(get_period_report(7), mk(("🔙 Ortga", "rep_menu"), ("🏠 Admin Menyusi", "am")))
+    elif a == "rep_month": ed(get_period_report(30), mk(("🔙 Ortga", "rep_menu"), ("🏠 Admin Menyusi", "am")))
     elif a == "rep_pdf_start": start_pdf_request(c)
     elif a == "end_day_start": start_end_day(c)
-    elif a == "bc": ask(f"📢 Barcha foydalanuvchilarga yuboriladigan e'lon/matn/rasmni yuboring:{BK}", broadcast_send)
+    elif a == "bc": ask(cid, f"📢 Barcha foydalanuvchilarga yuboriladigan e'lon/matn/rasmni yuboring:{BK}", broadcast_send)
 
     # --- Admin: Boshqaruv ---
     elif a in ("as", "sc"):
@@ -499,7 +552,7 @@ def cb(c):
             if not rows: ed("Ushbu bo'limda mahsulot topilmadi." if st else "Ushbu bo'limda hozircha mahsulot yo'q.", kb)
             else: ed(f"📌 <b>{CATS[k]}</b> mahsulotlari:\n" + ("Soni oshiriladigan mahsulotni tanlang:" if st else "Tahrirlash yoki o'chirish uchun birini tanlang:"), kb)
     elif a == "ak":
-        if k in prods: ask(f"✍️ <code>{html.escape(prods[k]['name_uz'])}</code> ga nechta dona qo'shdingiz? (masalan: 10):", add_stock, k)
+        if k in prods: ask(cid, f"✍️ <code>{html.escape(prods[k]['name_uz'])}</code> ga nechta dona qo'shdingiz? (masalan: 10):", add_stock, k)
     elif a == "ee":
         it = prods.get(k)
         if not it: amain(c)
@@ -519,18 +572,19 @@ def cb(c):
         if k not in prods: amain(c)
         else:
             what = "<b>narxni</b>" if a == "cp" else "<b>soni (dona)</b>ni"
-            ask(f"✍️ <code>{html.escape(prods[k]['name_uz'])}</code> uchun yangi {what} kiriting:{BK}", upd, k, "price" if a == "cp" else "count")
+            ask(cid, f"✍️ <code>{html.escape(prods[k]['name_uz'])}</code> uchun yangi {what} kiriting:{BK}", upd, k, "price" if a == "cp" else "count")
     elif a == "an": ed("➕ Yangi mahsulot qaysi toifaga kiradi?", cat_kb("ac", "🍫 Sneklar"))
     elif a == "ac":
-        tmp.clear(); tmp["category"] = k
-        ask(f"✍️ <b>{CATS[k]}</b> uchun mahsulot nomini kiriting:{BK}", add_name)
-    elif a == "rp": ask(f"✍️ Javobingizni yozing (ID: <code>{k}</code>):", reply_user, k)
+        tmp[cid] = tmp.get(cid, {})
+        tmp[cid]["category"] = k
+        ask(cid, f"✍️ <b>{CATS[k]}</b> uchun mahsulot nomini kiriting:{BK}", add_name)
+    elif a == "rp": ask(cid, f"✍️ Javobingizni yozing (ID: <code>{k}</code>):", reply_user, k)
 
 # ---------- Flask va Botni Ishga tushirish ----------
 app = Flask(__name__)
 
 @app.route("/")
-def home(): return "Bot is running 24/7 with PDF Report feature!"
+def home(): return "Bot is running 24/7 with Multi-Admin, Security & Return Buttons!"
 
 def run_bot():
     try: bot.set_my_commands([T.BotCommand("start", "Botni qayta ishga tushirish / Restart bot 🔄")])
