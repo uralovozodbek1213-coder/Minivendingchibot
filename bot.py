@@ -7,7 +7,8 @@ from reportlab.lib import colors
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 
-TOKEN = os.environ.get("TOKEN", "")
+TOKEN = "8664579659:AAFcndqC5hQMCKjfmjFafQD_1Hui_7dsZlE"
+
 MAIN_ADMIN_ID = 8481771373
 DEFAULT_PASSWORD = "admin123"
 DB_FILE = "vending.db"
